@@ -65,20 +65,20 @@
 
   function describirLinea(l) {
     const p = prod(l.producto);
+    let nombre, base, unidad;
     if (p.tipo === "espuela") {
       const pres = PRESENTACIONES.find((x) => x.id === l.presentacion).nombre.toLowerCase();
-      return { nombre: p.nombre, detalle: `${medidaTexto(l.medida)} · ${pres} · ${l.cantidad} pares` };
+      nombre = p.nombre; base = `${medidaTexto(l.medida)} · ${pres}`; unidad = "pares";
+    } else if (p.tipo === "patapioja") {
+      nombre = `${p.nombre} ${p.colores.find((x) => x.id === l.color).nombre.toLowerCase()}`; base = ""; unidad = "pares";
+    } else {
+      const v = p.variantes.find((x) => x.id === l.variante);
+      if (p.tipo === "unidad-docena") { nombre = `${p.nombre} ${v.nombre.toLowerCase()}`; unidad = p.unidad === "barra" ? "barras" : "pares"; }
+      else { nombre = `${p.nombre} ${v.nombre}`; unidad = l.cantidad === 1 ? "unidad" : "unidades"; }
+      base = "";
     }
-    if (p.tipo === "patapioja") {
-      const c = p.colores.find((x) => x.id === l.color).nombre;
-      return { nombre: `${p.nombre} ${c.toLowerCase()}`, detalle: `${l.cantidad} pares` };
-    }
-    const v = p.variantes.find((x) => x.id === l.variante);
-    if (p.tipo === "unidad-docena") {
-      const plural = p.unidad === "barra" ? "barras" : "pares";
-      return { nombre: `${p.nombre} ${v.nombre.toLowerCase()}`, detalle: `${l.cantidad} ${plural}` };
-    }
-    return { nombre: `${p.nombre} ${v.nombre}`, detalle: `${l.cantidad} ${l.cantidad === 1 ? "unidad" : "unidades"}` };
+    const cant = `${l.cantidad} ${unidad}`;
+    return { nombre, base, detalle: base ? `${base} · ${cant}` : cant };
   }
 
   function agregar(linea) {
@@ -379,7 +379,8 @@
   let ultimoFoco = null;
   function abrirPanel() { ultimoFoco = document.activeElement; panel.hidden = false; pintarPedido(); $(".panel__cerrar").focus(); document.body.style.overflow = "hidden"; }
   function cerrarPanel() { panel.hidden = true; document.body.style.overflow = ""; if (ultimoFoco) ultimoFoco.focus(); }
-  $("#abrir-pedido").addEventListener("click", abrirPanel);
+  $$("#abrir-pedido, [data-abrir-carrito]").forEach((b) => b.addEventListener("click", abrirPanel));
+  $$("[data-seguir-comprando]").forEach((b) => b.addEventListener("click", () => { cerrarPanel(); document.getElementById("catalogo").scrollIntoView({ behavior: "smooth" }); }));
   $$("[data-cerrar]", panel).forEach((b) => b.addEventListener("click", cerrarPanel));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !panel.hidden) cerrarPanel(); });
 
@@ -399,6 +400,7 @@
     const pais = ubicacionPedido ? ubicacionPedido.paisNombre() : "Colombia";
     const caja = $("#opciones-pago");
     const sub = subtotal();
+    const previo = (caja.querySelector("input[name=pago]:checked") || {}).value;
     if (pais === "Colombia") {
       const habilitada = sub >= NEGOCIO.contraentregaMinimo;
       caja.innerHTML = `<legend>¿Cómo quieres pagar?</legend>
@@ -409,8 +411,18 @@
         <label class="opcion"><input type="radio" name="pago" value="PayPal" checked> PayPal</label>
         <label class="opcion"><input type="radio" name="pago" value="Western Union"> Western Union</label>`;
     }
+    const elegir = caja.querySelector(`input[name=pago][value="${previo}"]:not([disabled])`);
+    if (elegir) elegir.checked = true;
     $("#nota-envio").textContent = envioTexto(pais).texto;
+    textoConfirmar();
   }
+  // El botón dice a dónde lleva según la forma de pago
+  function textoConfirmar() {
+    const pago = ($("#opciones-pago input[name=pago]:checked") || {}).value || "";
+    $("#boton-confirmar").textContent = pago.startsWith("Pago en línea") ? "Confirmar pedido e ir a pago seguro"
+      : pago === "Contraentrega" ? "Confirmar pedido contraentrega" : `Confirmar pedido y pagar por ${pago}`;
+  }
+  $("#opciones-pago").addEventListener("change", textoConfirmar);
   // País, indicativo, departamento y municipio del pedido
   const ubicacionPedido = window.Ubicacion ? window.Ubicacion.conectar({
     pais: $("#campo-pais"), paisOtro: $("#campo-pais-otro"), indicativo: $("#campo-indicativo"), celular: $("#campo-celular"),
@@ -422,6 +434,7 @@
     const sub = subtotal();
     const pares = paresEspuela();
     $("#resumen-barra").textContent = pedido.length ? `${pedido.length} ${pedido.length === 1 ? "producto" : "productos"} · ${pesos(sub)}` : "Tu pedido está vacío";
+    $$("[data-contador-carrito]").forEach((el) => { el.textContent = pedido.length; el.hidden = !pedido.length; });
     if (panel.hidden) return;
 
     const cont = $("#lineas-pedido");
@@ -431,10 +444,21 @@
       cont.innerHTML = pedido.map((l, i) => {
         const d = describirLinea(l), pr = precioLinea(l);
         return `<div class="linea"><span class="linea__nombre">${d.nombre}</span><span class="linea__total">${pesos(pr.total)}</span>
-          <span class="linea__detalle">${d.detalle}${pr.unitario && prod(l.producto).tipo !== "variantes" ? ` · ${pesos(pr.unitario)} c/u` : ""}</span>
-          <button class="linea__quitar" type="button" data-quitar="${i}">Quitar</button></div>`;
+          <span class="linea__detalle">${[d.base, pr.unitario && prod(l.producto).tipo !== "variantes" ? `${pesos(pr.unitario)} c/u` : ""].filter(Boolean).join(" · ")}</span>
+          <div class="linea__acciones">
+            <div class="cantidad" role="group" aria-label="Cantidad de ${d.nombre}">
+              <button type="button" data-menos="${i}" aria-label="Quitar uno">−</button>
+              <input type="number" min="1" inputmode="numeric" value="${l.cantidad}" data-cantidad="${i}" aria-label="Cantidad">
+              <button type="button" data-mas="${i}" aria-label="Agregar uno">+</button>
+            </div>
+            <button class="linea__quitar" type="button" data-quitar="${i}">Quitar</button>
+          </div></div>`;
       }).join("");
-      $$("[data-quitar]", cont).forEach((b) => b.addEventListener("click", () => { pedido.splice(Number(b.dataset.quitar), 1); guardar(); pintarPedido(); }));
+      const cambiar = (i, n) => { if (n <= 0) pedido.splice(i, 1); else pedido[i].cantidad = n; guardar(); pintarPedido(); };
+      $$("[data-quitar]", cont).forEach((b) => b.addEventListener("click", () => cambiar(Number(b.dataset.quitar), 0)));
+      $$("[data-menos]", cont).forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.menos); cambiar(i, pedido[i].cantidad - 1); }));
+      $$("[data-mas]", cont).forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.mas); cambiar(i, pedido[i].cantidad + 1); }));
+      $$("[data-cantidad]", cont).forEach((inp) => inp.addEventListener("change", () => cambiar(Number(inp.dataset.cantidad), Math.max(0, parseInt(inp.value, 10) || 0))));
     }
 
     const sug = sugerencias();
@@ -487,4 +511,6 @@
 
   pintarPedido();
 
+  // Para otros módulos (buscador, ayuda)
+  window.IE = { abrirFicha, abrirPanel };
 })();
