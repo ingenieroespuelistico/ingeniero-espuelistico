@@ -1,0 +1,15 @@
+MODELOS 3D DE LA PORTADA
+
+Cada archivo de esta carpeta es una espuela del recorrido 3D. Aparecen en el orden de su número.
+
+Para agregar una espuela:
+1. Copia el archivo más parecido (por ejemplo 2-negra-casquillo.js) y llámalo 5-nombre.js.
+2. Cambia el nombre, el detalle, el alto (35, 38, 40, 42, 43) y el color.
+   Los colores van en formato 0xRRGGBB (por ejemplo 0xc98200 es el ámbar de la acrílica).
+3. En index.html agrega una línea junto a las otras:
+   <script src="js/modelos3d/5-nombre.js"></script>
+
+Para quitar una espuela del recorrido, borra su línea en index.html.
+Tipo "casquillo": casquillo metálico + espiga, se desarma en la animación.
+Tipo "enteriza": una sola pieza, no se desarma.
+Si una forma nueva no se parece a ninguna de estas dos, pídele a Claude que la modele desde una foto.

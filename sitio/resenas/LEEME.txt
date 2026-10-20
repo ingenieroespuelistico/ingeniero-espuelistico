@@ -1,0 +1,14 @@
+CÓMO AGREGAR RESEÑAS
+
+1. Copia el archivo a esta carpeta (resenas/): una captura (.jpg, .png), un audio (.mp3, .m4a) o un video (.mp4).
+2. Abre lista.js y agrega una línea como las de ejemplo, con el nombre exacto del archivo.
+   Quita las dos barras // del inicio para que la línea cuente.
+3. La página la muestra sola: las fotos se abren en grande, los audios tienen botón de reproducir
+   y los videos se ven en pantalla grande.
+
+Importante:
+- Pide permiso al cliente antes de publicar su mensaje, audio o video.
+- Tapa nombres completos y números de teléfono en las capturas.
+- Los audios de WhatsApp vienen en .opus, que no suena en todos los iPhone. Déjalos en
+  01_fotos_productos/resenas y pídele a Claude que los convierta a .mp3.
+- Videos cortos (menos de 30 segundos y menos de 10 MB) para que la página cargue rápido.

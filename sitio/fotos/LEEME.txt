@@ -1,0 +1,19 @@
+CÓMO AGREGAR FOTOS A UN PRODUCTO
+
+1. Entra a la carpeta del producto:
+   acrilica            Espuela acrílica amarilla con casquillo metálico
+   negra-casquillo     Espuela negra reforzada con casquillo metálico
+   blanca-enteriza     Espuela blanca enteriza
+   negra-enteriza      Espuela negra enteriza
+   patapioja           Patapioja sintética
+   cera                Cera en barra
+   esparadrapo         Esparadrapo
+   metalica            Patapioja metálica
+
+2. Ponle a la foto el número que sigue: 1.jpg, 2.jpg, 3.jpg ... (sin saltarte números).
+   La 1 es la que se ve en el catálogo. Se aceptan .jpg, .png y .webp (hasta 12 fotos).
+
+3. Listo: la página la muestra sola en la ficha del producto, con flechas para pasar entre fotos.
+
+Consejos: fotos cuadradas, fondo claro y liso, menos de 300 KB cada una.
+Si quieres que les quite el fondo como a las primeras, déjalas en 01_fotos_productos y pídemelo.

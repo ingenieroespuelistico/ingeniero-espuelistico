@@ -1,0 +1,4 @@
+FOTOS DEL TALLER (sección "Soy Alexander")
+Pon aquí las fotos como 1.jpg, 2.jpg, 3.jpg ... sin saltarte números (también .png o .webp, hasta 12).
+La primera es la que se ve al cargar; las demás pasan solas cada 5 segundos y el cliente puede cambiarlas.
+Recomendado: fotos verticales (4:5), por ejemplo tú en el taller, el torno, el proceso y el empaque.

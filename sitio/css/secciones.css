@@ -1,0 +1,171 @@
+/* =========================================================
+   v5 · Banderas, menú de celular, botón del visor, taller,
+   reseñas y preguntas frecuentes
+   ========================================================= */
+
+/* ----- Banderas de los países que atendemos ----- */
+.cabecera__fila { gap: 20px; }
+.marca { flex: 0 0 auto; }
+.banderas { list-style: none; margin: 0 auto 0 0; padding: 0; display: flex; gap: 6px; flex-wrap: nowrap; }
+.banderas li { display: block; line-height: 0; }
+.banderas svg { width: 30px; height: 20px; border-radius: 3px; box-shadow: 0 0 0 1px rgba(20,32,51,.14), 0 2px 6px rgba(20,32,51,.12); }
+
+/* ----- Franja de contacto: en celular se ven horario y teléfono ----- */
+@media (max-width: 560px) {
+  .franja-contacto { font-size: .8rem; }
+  .franja-contacto__fila { flex-direction: column; gap: 2px; padding: 6px 0; }
+  .franja-contacto__fila > span { display: block; }
+}
+
+/* ----- Menú ----- */
+.menu-boton { display: none; }
+.menu__wa { display: none; }
+@media (max-width: 960px) {
+  .menu-boton {
+    display: grid; align-content: center; gap: 5px; width: 46px; height: 46px; padding: 0 11px;
+    border: 1px solid var(--linea); border-radius: 12px; background: #fff; cursor: pointer; flex: 0 0 auto;
+  }
+  .menu-boton span { display: block; height: 2px; background: var(--tinta); border-radius: 2px; transition: transform .2s, opacity .2s; }
+  .menu-abierto .menu-boton span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .menu-abierto .menu-boton span:nth-child(2) { opacity: 0; }
+  .menu-abierto .menu-boton span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+  .menu {
+    display: none; position: absolute; left: 0; right: 0; top: 100%;
+    flex-direction: column; gap: 0; padding: 8px 16px 16px; background: #fff;
+    border-bottom: 1px solid var(--linea); box-shadow: 0 24px 40px -16px rgba(20,32,51,.25);
+  }
+  .menu-abierto .menu { display: flex; }
+  .menu a { padding: 14px 4px; font-size: 1.05rem; border-bottom: 1px solid var(--linea); }
+  .menu .menu__wa { display: block; margin-top: 12px; border: 0; border-radius: 999px; background: var(--verde); color: #fff; text-align: center; }
+  .cabecera { position: sticky; }
+  .cabecera__fila { position: relative; }
+}
+@media (max-width: 560px) {
+  .cabecera__fila { gap: 10px; }
+  .marca__nombre { font-size: .9rem; }
+  .banderas { gap: 3px; }
+  .banderas svg { width: 17px; height: 11.5px; border-radius: 2px; }
+}
+
+/* ----- Botón sobre la espuela 3D ----- */
+.visor { position: relative; padding-top: 68px; }
+.visor__boton { position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 2; box-shadow: 0 10px 24px -8px rgba(30,79,191,.55); }
+
+/* ----- Carrusel del taller ----- */
+.carrusel { position: relative; overflow: hidden; aspect-ratio: 4 / 5; max-width: 100%; padding: 0; }
+.carrusel__marco { position: absolute; inset: 0; overflow: hidden; touch-action: pan-y; }
+.carrusel__pista { display: flex; height: 100%; transition: transform .5s cubic-bezier(.2,.7,.3,1); }
+.carrusel__pista img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: cover; user-select: none; }
+.carrusel__vacio { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 6px; padding: 24px; color: var(--tinta-suave); font-weight: 600;
+  background: repeating-linear-gradient(135deg, var(--papel) 0 14px, #EDF1F6 14px 28px); }
+.carrusel__vacio small { font-weight: 500; }
+.carrusel__flecha { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255,255,255,.9); box-shadow: 0 4px 14px rgba(20,32,51,.2); font-size: 1.7rem; line-height: 1; cursor: pointer; color: var(--tinta); }
+.carrusel__flecha--izq { left: 12px; }
+.carrusel__flecha--der { right: 12px; }
+.carrusel__flecha[hidden] { display: none; }
+.carrusel__puntos { position: absolute; bottom: 14px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; }
+.carrusel__puntos button { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 0; background: rgba(255,255,255,.65); box-shadow: 0 0 0 1px rgba(20,32,51,.25); cursor: pointer; }
+.carrusel__puntos button[aria-current="true"] { background: #fff; transform: scale(1.3); }
+.taller .flotante:hover { transform: none; }
+
+/* ----- Reseñas ----- */
+.resenas__rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 24px; align-items: start; }
+.resenas__vacio { padding: 24px 28px; margin: 0; }
+.resena { overflow: hidden; display: grid; }
+.resena__abrir { position: relative; display: block; width: 100%; padding: 0; border: 0; background: var(--papel); cursor: pointer; }
+.resena--foto img { width: 100%; max-height: 380px; object-fit: cover; object-position: top; }
+.resena--video video { width: 100%; aspect-ratio: 9 / 12; object-fit: cover; display: block; background: #0B1424; pointer-events: none; }
+.resena__play { position: absolute; inset: 0; margin: auto; width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,.92); box-shadow: 0 8px 20px rgba(0,0,0,.25); }
+.resena__play::after { content: ""; position: absolute; left: 26px; top: 20px; border-left: 18px solid var(--azul); border-top: 12px solid transparent; border-bottom: 12px solid transparent; }
+.resena--audio { padding: 20px; gap: 14px; }
+.resena__onda { display: flex; align-items: center; gap: 3px; height: 40px; }
+.resena__onda i { flex: 1; border-radius: 2px; background: var(--verde); opacity: .75; }
+.resena__onda i:nth-child(3n) { height: 70%; } .resena__onda i:nth-child(3n+1) { height: 40%; } .resena__onda i:nth-child(3n+2) { height: 95%; }
+.resena--audio audio { width: 100%; }
+.resena__pie { margin: 0; padding: 12px 16px 16px; display: grid; gap: 2px; font-size: .92rem; color: var(--tinta-suave); }
+.resena--audio .resena__pie { padding: 0; }
+.resena__pie strong { color: var(--tinta); }
+
+/* Visor grande de reseñas */
+.visor-medios { position: fixed; inset: 0; z-index: 46; display: grid; place-items: center; padding: 24px; }
+.visor-medios[hidden] { display: none; }
+.visor-medios__fondo { position: absolute; inset: 0; background: rgba(11,20,36,.72); }
+.visor-medios__caja { position: relative; margin: 0; max-width: min(900px, 100%); max-height: calc(100vh - 48px); display: grid; gap: 10px; justify-items: center; }
+.visor-medios__contenido img, .visor-medios__contenido video { max-width: 100%; max-height: calc(100vh - 140px); border-radius: 14px; background: #000; display: block; }
+.visor-medios__caja figcaption .resena__pie { color: #E6ECF3; text-align: center; }
+.visor-medios__caja figcaption .resena__pie strong { color: #fff; }
+.visor-medios .ficha__cerrar { top: -6px; right: -6px; }
+.visor-medios .ficha__flecha--izq { left: -22px; }
+.visor-medios .ficha__flecha--der { right: -22px; }
+@media (max-width: 700px) {
+  .visor-medios { padding: 12px; }
+  .visor-medios .ficha__cerrar { top: 4px; right: 4px; }
+  .visor-medios .ficha__flecha--izq { left: 6px; }
+  .visor-medios .ficha__flecha--der { right: 6px; }
+}
+
+/* ----- Preguntas frecuentes ----- */
+.preguntas__rejilla { display: grid; grid-template-columns: 1fr 1.6fr; gap: 48px; align-items: start; }
+.preguntas__lista { display: grid; gap: 14px; }
+.pregunta { padding: 0; }
+.pregunta summary { list-style: none; cursor: pointer; padding: 18px 56px 18px 22px; font-weight: 700; position: relative; }
+.pregunta summary::-webkit-details-marker { display: none; }
+.pregunta summary::after { content: "+"; position: absolute; right: 20px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--azul-claro); color: var(--azul); font-size: 1.2rem; }
+.pregunta[open] summary::after { content: "−"; }
+.pregunta p { margin: 0; padding: 0 22px 20px; color: var(--tinta-suave); max-width: 64ch; }
+.pregunta:hover { transform: none; }
+@media (max-width: 960px) { .preguntas__rejilla { grid-template-columns: 1fr; gap: 20px; } }
+
+/* Texto del taller sobre una tarjeta, para que se lea encima de la espuela de fondo */
+.taller__texto { background: rgba(255,255,255,.86); border-radius: 18px; padding: 28px; box-shadow: 0 10px 24px -6px rgba(20,32,51,.10), 0 30px 60px -18px rgba(20,32,51,.18); }
+
+/* ----- Agenda de llamadas ----- */
+.agenda__rejilla { display: grid; grid-template-columns: 1fr 1.5fr; gap: 48px; align-items: start; }
+.agenda__datos { padding-left: 20px; color: var(--tinta-suave); display: grid; gap: 6px; }
+.agenda__formulario { padding: 28px; display: grid; gap: 18px; }
+.agenda__formulario label { display: grid; gap: 4px; font-size: .9rem; font-weight: 600; }
+.agenda__formulario input:not([type=checkbox]):not([type=radio]), .agenda__formulario select {
+  font: 500 1rem var(--fuente); color: var(--tinta); min-height: 48px; padding: 8px 12px; border: 1.5px solid var(--linea); border-radius: 8px; background: #fff; width: 100%;
+}
+.agenda__campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.agenda__campos label:first-child { grid-column: 1 / -1; }
+.agenda__telefono { display: flex; align-items: stretch; }
+.agenda__telefono > span { display: grid; place-items: center; padding: 0 12px; border: 1.5px solid var(--linea); border-right: 0; border-radius: 8px 0 0 8px; background: var(--papel); font-weight: 700; }
+.agenda__telefono input { border-radius: 0 8px 8px 0 !important; }
+.agenda__grupo { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.agenda__grupo legend { font-weight: 700; font-size: .95rem; margin-bottom: 8px; }
+.agenda__grupo legend small { font-weight: 500; color: var(--tinta-suave); }
+.agenda__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex !important; position: relative; cursor: pointer; }
+.chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip span { display: block; padding: 9px 14px; border: 1.5px solid var(--linea); border-radius: 999px; background: #fff; font-size: .9rem; font-weight: 600; }
+.chip input:checked + span { border-color: var(--azul); background: var(--azul-claro); color: var(--azul-oscuro); }
+.chip input:focus-visible + span { outline: 3px solid var(--azul); outline-offset: 2px; }
+.agenda__formulario .boton { width: 100%; }
+.agenda__formulario .opcion a { font-weight: 600; }
+.agenda .flotante:hover { transform: none; }
+@media (max-width: 960px) { .agenda__rejilla { grid-template-columns: 1fr; gap: 20px; } }
+@media (max-width: 560px) { .agenda__campos { grid-template-columns: 1fr; } .agenda__formulario { padding: 20px 16px; } }
+
+/* ----- Autorización de datos (pedido y agenda) ----- */
+.autorizacion {
+  display: grid; grid-template-columns: 22px 1fr; column-gap: 12px; row-gap: 6px; align-items: start;
+  padding: 14px 16px; border: 1px solid var(--linea); border-radius: 10px; background: var(--papel);
+}
+.autorizacion input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--verde); }
+.autorizacion label { display: block !important; font-size: .92rem !important; font-weight: 600; line-height: 1.4; cursor: pointer; }
+.autorizacion__enlaces { grid-column: 2; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .88rem; }
+.autorizacion__enlaces a { font-weight: 600; }
+
+/* ----- Teléfono con indicativo y lugar ----- */
+.campo-telefono, .agenda__telefono { display: flex; align-items: stretch; }
+.campo-telefono > span, .agenda__telefono > span {
+  display: grid; place-items: center; min-width: 58px; padding: 0 10px; border: 1.5px solid var(--linea); border-right: 0;
+  border-radius: 8px 0 0 8px; background: var(--papel); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.campo-telefono input, .agenda__telefono input { border-radius: 0 8px 8px 0 !important; min-width: 0; }
+.formulario__par { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.formulario__par label[hidden], .formulario label[hidden], .agenda__formulario label[hidden] { display: none !important; }
+.formulario__par > label { min-width: 0; }
+@media (max-width: 420px) { .formulario__par { grid-template-columns: 1fr; } }
+.agenda__formulario select optgroup { font-weight: 700; }

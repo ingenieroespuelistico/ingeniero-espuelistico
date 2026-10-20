@@ -1,0 +1,15 @@
+CÓMO AGREGAR UN PRODUCTO A LA PÁGINA
+
+Cada producto es un archivo de esta carpeta. Aparecen en el catálogo en el orden de su número.
+
+1. Copia la plantilla que se parezca:
+   - plantilla-espuela.js     espuelas (usan la tabla de precios por cantidad: minorista, mayorista...)
+   - plantilla-variantes.js   cualquier otro producto con opciones y un precio por opción
+2. Renómbrala con el número siguiente, por ejemplo 9-espuela-roja.js
+3. Cambia los textos y precios. El "id" debe ser corto, sin espacios ni tildes (ej. "espuela-roja").
+4. Crea la carpeta de fotos con el mismo id: fotos/espuela-roja/ y pon 1.jpg, 2.jpg...
+5. En index.html, junto a las demás líneas de productos, agrega:
+   <script src="js/productos/9-espuela-roja.js"></script>
+
+Para quitar un producto, borra su línea en index.html (el archivo puede quedarse).
+Si quieres que también gire en la portada 3D, mira js/modelos3d/LEEME.txt.
