@@ -3,7 +3,8 @@
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-  const pesos = (n) => "$" + Math.round(n).toLocaleString("es-CO");
+  const pesos = (n) => (window.Moneda ? Moneda.formatear(n) : "$" + Math.round(n).toLocaleString("es-CO"));
+  const pesosCOP = (n) => "$" + Math.round(n).toLocaleString("es-CO");
   const prod = (id) => PRODUCTOS.find((p) => p.id === id);
   const medidaTexto = (mm) => `${mm} líneas - ${PULGADAS[mm]}`;
 
@@ -214,7 +215,7 @@
     </div>` : "";
 
   function precioDesde(p) {
-    if (p.tipo === "espuela") return `Desde <strong>${pesos(p.precios.gran_distribuidor - 200)}</strong> el par`;
+    if (p.tipo === "espuela") return `Desde <strong>${pesos(p.precios.gran_distribuidor + Math.min(0, ...Object.values(AJUSTE_EMPAQUE)))}</strong> el par`;
     if (p.tipo === "patapioja") return `Desde <strong>${pesos(1300)}</strong> el par`;
     if (p.tipo === "unidad-docena") return `Desde <strong>${pesos(Math.min(...p.variantes.map((v) => v.docena / 12)))}</strong> ${p.unidad === "barra" ? "la barra" : "el par"} por docena`;
     return `Desde <strong>${pesos(Math.min(...p.variantes.map((v) => v.precio)))}</strong>`;
@@ -234,14 +235,17 @@
       </article>`;
   }
 
-  $("#lista-productos").innerHTML = PRODUCTOS.map(tarjeta).join("");
-  $$(".producto").forEach((card) => {
-    const id = card.dataset.producto;
-    buscarFoto(id, 1).then((f) => {
-      if (f) $(".producto__foto", card).innerHTML = `<img src="${f}" alt="${prod(id).nombre}" loading="lazy" decoding="async" width="600" height="600">`;
+  function pintarCatalogo() {
+    $("#lista-productos").innerHTML = PRODUCTOS.map(tarjeta).join("");
+    $$(".producto").forEach((card) => {
+      const id = card.dataset.producto;
+      buscarFoto(id, 1).then((f) => {
+        if (f) $(".producto__foto", card).innerHTML = `<img src="${f}" alt="${prod(id).nombre}" loading="lazy" decoding="async" width="600" height="600">`;
+      });
+      card.addEventListener("click", () => abrirFicha(id));
     });
-    card.addEventListener("click", () => abrirFicha(id));
-  });
+  }
+  pintarCatalogo();
 
   /* ---------- Ficha de producto (pantalla grande) ---------- */
   const ficha = $("#ficha");
@@ -368,9 +372,12 @@
   /* ---------- Tabla de precios y regalos ---------- */
   const espuelas = PRODUCTOS.filter((p) => p.tipo === "espuela");
   const rango = (i) => (NIVELES[i + 1] ? `${NIVELES[i].desde} a ${NIVELES[i + 1].desde - 1} pares` : `${NIVELES[i].desde} pares o más`);
-  $("#tabla-precios").innerHTML = `
-    <thead><tr><th>Referencia</th>${NIVELES.map((n, i) => `<th>${n.nombre}<small>${rango(i)}</small></th>`).join("")}</tr></thead>
-    <tbody>${espuelas.map((p) => `<tr><td>${p.nombre}</td>${NIVELES.map((n) => `<td>${pesos(p.precios[n.id])}</td>`).join("")}</tr>`).join("")}</tbody>`;
+  function pintarTabla() {
+    $("#tabla-precios").innerHTML = `
+      <thead><tr><th>Referencia</th>${NIVELES.map((n, i) => `<th>${n.nombre}<small>${rango(i)}</small></th>`).join("")}</tr></thead>
+      <tbody>${espuelas.map((p) => `<tr><td>${p.nombre}</td>${NIVELES.map((n) => `<td>${pesos(p.precios[n.id])}</td>`).join("")}</tr>`).join("")}</tbody>`;
+  }
+  pintarTabla();
   $("#texto-regalos").textContent = "Te regalamos patapioja sintética según los pares de espuela de tu pedido: " +
     REGALOS.map((r) => `${r.pares} pares desde ${r.desde.toLocaleString("es-CO")}`).join(", ") + ".";
 
@@ -389,7 +396,7 @@
     const regla = ENVIOS_INTERNACIONALES[pais];
     const kg = pesoGramos() / 1000;
     if (regla && regla.tipo === "formula") {
-      const usd = 25 + 6 * Math.ceil(Math.max(0, kg - 1) / 0.5);
+      const usd = ENVIO_INTERNACIONAL_USD.base + ENVIO_INTERNACIONAL_USD.porMedioKiloExtra * Math.ceil(Math.max(0, kg - 1) / 0.5);
       return { texto: `Envío puerta a puerta a ${pais}: aprox. USD ${usd} (peso estimado ${kg.toFixed(2)} kg).`, usd };
     }
     if (regla) return { texto: `Envío a ${pais}: ${regla.texto}. Te confirmamos el valor exacto por WhatsApp.` };
@@ -472,6 +479,7 @@
       ${nivel ? `<div><span>Precio de espuela aplicado</span><strong>${nivel.nombre} (${pares} pares)</strong></div>` : ""}
       ${regalo ? `<div><span>Regalo</span><strong>${regalo.pares} pares de patapioja</strong></div>` : ""}
       <div class="total"><span>Subtotal productos</span><span>${pesos(sub)}</span></div>
+      ${window.Moneda && !Moneda.esCOP() ? `<div class="totales__cop"><span>Se cobra en pesos colombianos</span><span>${pesosCOP(sub)} COP</span></div>` : ""}
       <div><span>Envío</span><span>Se confirma antes de pagar</span></div>`;
     pintarPagos();
   }
@@ -494,12 +502,12 @@
     const d = Object.fromEntries(new FormData(f));
     const paisNombre = u ? u.paisNombre() : "Colombia";
     const pares = paresEspuela(), regalo = regaloPara(pares);
-    const lineas = pedido.map((l) => { const x = describirLinea(l); return `• ${x.nombre}: ${x.detalle} = ${pesos(precioLinea(l).total)}`; });
+    const lineas = pedido.map((l) => { const x = describirLinea(l); return `• ${x.nombre}: ${x.detalle} = ${pesosCOP(precioLinea(l).total)}`; });
     const texto = [
       "Hola, quiero confirmar este pedido desde la página:",
       ...lineas,
       regalo ? `Regalo: ${regalo.pares} pares de patapioja sintética` : "",
-      `Subtotal: ${pesos(subtotal())}`,
+      `Subtotal: ${pesosCOP(subtotal())} COP${window.Moneda && !Moneda.esCOP() ? ` (${Moneda.formatear(subtotal())})` : ""}`,
       `Pago: ${d.pago}`,
       envioTexto(paisNombre).texto,
       "",
@@ -510,6 +518,23 @@
   });
 
   pintarPedido();
+
+  // Cambio de moneda: se vuelven a pintar todos los precios
+  function pintarDatos() {
+    const datos = {
+      caja: pesos(AJUSTE_EMPAQUE.caja), granel: pesos(Math.abs(AJUSTE_EMPAQUE.granel)), contraentrega: pesosCOP(CONTRAENTREGA_MINIMO),
+      "envio-base": `USD ${ENVIO_INTERNACIONAL_USD.base}`, "envio-extra": `USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra}`, "envio-ecuador": ENVIO_INTERNACIONAL_USD.ecuador,
+    };
+    $$("[data-dato]").forEach((el) => { if (datos[el.dataset.dato] !== undefined) el.textContent = datos[el.dataset.dato]; });
+  }
+  pintarDatos();
+  document.addEventListener("moneda:cambio", () => {
+    pintarDatos();
+    pintarCatalogo();
+    pintarTabla();
+    pintarPedido();
+    if (!ficha.hidden && fichaProducto) actualizarPrecioFicha();
+  });
 
   // Para otros módulos (buscador, ayuda)
   window.IE = { abrirFicha, abrirPanel };

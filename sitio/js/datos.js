@@ -1,4 +1,4 @@
-// Datos del negocio y catálogo. Para cambiar un precio, edita solo este archivo.
+// Datos del negocio. Los PRECIOS no van aquí: se cambian en js/precios.js.
 const NEGOCIO = {
   marca: "Ingeniero Espuelístico",
   whatsapp: "573019580737",
@@ -6,7 +6,7 @@ const NEGOCIO = {
   horario: "Lun a vie 8:00 a.m. – 7:00 p.m. · Sáb 8:00 a.m. – 2:00 p.m.",
   tiktok: "https://www.tiktok.com/@ingeniero_espuelistico",
   facebook: "https://www.facebook.com/share/1Ff8Y8L43E/",
-  contraentregaMinimo: 45000,
+  contraentregaMinimo: CONTRAENTREGA_MINIMO,
   correo: "ingenieroespuelistico@gmail.com",
 };
 
@@ -19,9 +19,9 @@ const NIVELES = [
 ];
 
 const PRESENTACIONES = [
-  { id: "bolsa", nombre: "En bolsa", ajuste: 0, nota: "Forrada con plástico removible" },
-  { id: "caja", nombre: "En caja", ajuste: 300, nota: "Forrada con plástico removible" },
-  { id: "granel", nombre: "A granel", ajuste: -200, nota: "Sin plástico ni empaque" },
+  { id: "bolsa", nombre: "En bolsa", ajuste: AJUSTE_EMPAQUE.bolsa, nota: "Forrada con plástico removible" },
+  { id: "caja", nombre: "En caja", ajuste: AJUSTE_EMPAQUE.caja, nota: "Forrada con plástico removible" },
+  { id: "granel", nombre: "A granel", ajuste: AJUSTE_EMPAQUE.granel, nota: "Sin plástico ni empaque" },
 ];
 
 const PULGADAS = { 30: "1.2", 35: "1.4", 38: "1.5", 40: "1.6", 42: "1.7", 43: "1.7" };
@@ -41,7 +41,7 @@ const PRODUCTOS = window.CATALOGO || [];
 const ENVIOS_INTERNACIONALES = {
   "Panamá": { tipo: "formula" },
   "Costa Rica": { tipo: "formula" },
-  "Ecuador": { tipo: "rango", texto: "USD 40 a 50" },
+  "Ecuador": { tipo: "rango", texto: ENVIO_INTERNACIONAL_USD.ecuador },
 };
 
 // Descripción y dureza de cada producto (vienen dentro de cada archivo de js/productos/).

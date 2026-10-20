@@ -1,0 +1,35 @@
+CÓMO EDITAR LA PÁGINA (sin saber programar)
+
+Abre los archivos con el Bloc de notas o, mejor, con Visual Studio Code. Guarda y recarga la página con Ctrl + F5.
+
+QUÉ QUIERES CAMBIAR                         ARCHIVO
+-----------------------------------------   --------------------------------------------
+Precios (todos, en pesos colombianos)       js/precios.js
+  · espuelas por nivel, patapioja, cera,
+    metálica, esparadrapo
+  · recargo de caja / descuento a granel
+  · mínimo para contraentrega
+  · tarifa de envío internacional (USD)
+  · tasas de cambio de respaldo
+Palabras con las que buscan un producto     js/sinonimos.js
+Agregar / quitar un producto                js/productos/  (lee LEEME.txt de esa carpeta)
+Fotos de productos                          fotos/<id>/1.jpg, 2.jpg...  (fotos/LEEME.txt)
+Fotos del taller                            fotos/taller/
+Reseñas (fotos, audios, videos)             resenas/  (resenas/LEEME.txt)
+Preguntas frecuentes                        js/preguntas-datos.js
+WhatsApp, horario, redes, correo            js/datos.js  (bloque NEGOCIO)
+Regalos por cantidad                        js/datos.js  (REGALOS)
+Espuelas que giran en 3D                    js/modelos3d/  (LEEME.txt)
+
+MONEDAS
+- La moneda base es SIEMPRE el peso colombiano. Tú solo escribes precios en pesos.
+- Si el cliente elige otra moneda (bandera arriba o "Elige tu moneda local"), la página
+  convierte con la tasa del día que consulta sola en internet. Si esa consulta falla,
+  usa las tasas de respaldo de js/precios.js.
+- El cobro siempre se hace en pesos (Mercado Pago) o en dólares (PayPal / Western Union).
+
+DESPUÉS DE EDITAR
+- Revisa catálogo, tabla de precios y un pedido de prueba.
+- Cuando la página esté en internet: sube el cambio a GitHub y Netlify la actualiza sola
+  en 1–2 minutos. (Más adelante podemos poner un panel web con usuario y clave para
+  editar precios desde el celular.)

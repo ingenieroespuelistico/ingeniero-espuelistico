@@ -9,18 +9,57 @@
   const productos = typeof PRODUCTOS !== "undefined" ? PRODUCTOS : [];
   const preguntas = typeof PREGUNTAS !== "undefined" ? PREGUNTAS : [];
 
-  // Texto en el que se busca cada producto
+  // ----- Motor de búsqueda: tolera tildes, plurales, masculino/femenino, palabras a medio escribir y un error de letra -----
+  const VACIAS = new Set(["de", "la", "el", "los", "las", "para", "con", "en", "y", "del", "por", "un", "una", "que", "al", "o", "mi", "me", "quiero", "busco", "hay", "tienen"]);
+  const raiz = (w) => { let r = w; if (r.length > 3 && r.endsWith("es") && !/[aeiou]es$/.test(r) && r.length > 5) r = r.slice(0, -2); else if (r.length > 3 && r.endsWith("s")) r = r.slice(0, -1); if (r.length > 4 && /[ao]$/.test(r)) r = r.slice(0, -1); return r; };
+  const fichas = (t) => normal(t).split(/[^a-z0-9ñ]+/).filter(Boolean);
+  function casiIgual(a, b) { // distancia de edición ≤ 1
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0, j = 0, dif = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++dif > 1) return false;
+      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+    }
+    return dif + (a.length - i) + (b.length - j) <= 1;
+  }
+  // Qué tan bien coincide una palabra buscada con una palabra del producto (0 = nada)
+  function coincide(q, w) {
+    if (q === w) return 1;
+    const rq = raiz(q), rw = raiz(w);
+    if (rq === rw) return 1;
+    if (q.length >= 3 && w.startsWith(q)) return 0.8;          // palabra a medio escribir: "espu" → espuela
+    if (rq.length >= 5 && rw.length >= 5 && casiIgual(rq, rw)) return 0.6; // un error: "esparadapo"
+    return 0;
+  }
+  const sinonimos = typeof SINONIMOS !== "undefined" ? SINONIMOS : {};
+  const sinonimosTipo = typeof SINONIMOS_TIPO !== "undefined" ? SINONIMOS_TIPO : {};
+  const pulgadas = typeof PULGADAS !== "undefined" ? PULGADAS : {};
   const indice = productos.map((p) => ({
     p,
-    texto: normal([p.nombre, p.detalle, p.descripcion, (p.otros_nombres || []).join(" "),
-      (p.medidas || []).map((m) => `${m} lineas ${m}mm`).join(" "),
-      (p.variantes || []).map((v) => v.nombre).join(" "), (p.colores || []).map((c) => c.nombre).join(" "), p.tipo].join(" ")),
+    campos: [
+      { peso: 4, palabras: fichas(p.nombre) },
+      { peso: 3, palabras: fichas((sinonimos[p.id] || []).join(" ") + " " + (p.otros_nombres || []).join(" ")) },
+      { peso: 2, palabras: fichas([p.detalle, (p.medidas || []).map((m) => `${m} lineas ${m}mm ${String(pulgadas[m] || "").replace(".", "")}`).join(" "),
+        (p.variantes || []).map((v) => v.nombre).join(" "), (p.colores || []).map((c) => c.nombre).join(" ")].join(" ")) },
+      { peso: 1, palabras: fichas([p.descripcion, (sinonimosTipo[p.tipo] || []).join(" ")].join(" ")) },
+    ],
   }));
-  function buscarProductos(consulta) {
-    const ws = palabras(consulta);
+  function buscarProductos(consulta, max = 8) {
+    const ws = fichas(consulta).filter((w) => !VACIAS.has(w) && (w.length > 1 || /\d/.test(w)));
     if (!ws.length) return [];
-    return indice.map((x) => ({ ...x, puntos: ws.reduce((s, w) => s + (x.texto.includes(w) ? (normal(x.p.nombre).includes(w) ? 3 : 1) : 0), 0) }))
-      .filter((x) => x.puntos > 0).sort((a, b) => b.puntos - a.puntos).slice(0, 6).map((x) => x.p);
+    const puntuados = indice.map((x) => {
+      let total = 0, encontradas = 0;
+      for (const q of ws) {
+        let mejor = 0;
+        for (const c of x.campos) for (const w of c.palabras) { const m = coincide(q, w) * c.peso; if (m > mejor) mejor = m; }
+        if (mejor) { total += mejor; encontradas++; }
+      }
+      return { p: x.p, total, todas: encontradas === ws.length };
+    }).filter((x) => x.total > 0);
+    // Si algún producto tiene TODAS las palabras buscadas, mostramos solo esos
+    const lista = puntuados.some((x) => x.todas) ? puntuados.filter((x) => x.todas) : puntuados;
+    return lista.sort((a, b) => b.total - a.total).slice(0, max).map((x) => x.p);
   }
   function buscarPreguntas(consulta, max = 4) {
     const ws = palabras(consulta).filter((w) => !["que", "como", "cual", "para", "por", "los", "las", "del", "una", "uno"].includes(w));

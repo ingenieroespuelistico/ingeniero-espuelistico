@@ -14,7 +14,7 @@ const PREGUNTAS = [
   },
   {
     pregunta: "¿Las espuelas vienen selladas?",
-    respuesta: "En bolsa y en caja vienen forradas con un plástico removible, listas para el uso. A granel van sin plástico ni empaque y cuestan $200 menos por par.",
+    respuesta: `En bolsa y en caja vienen forradas con un plástico removible, listas para el uso. A granel van sin plástico ni empaque y cuestan $${Math.abs(AJUSTE_EMPAQUE.granel).toLocaleString("es-CO")} pesos menos por par.`,
   },
   {
     pregunta: "¿Cuándo despachan mi pedido?",
@@ -22,7 +22,7 @@ const PREGUNTAS = [
   },
   {
     pregunta: "¿Hacen envíos contraentrega?",
-    respuesta: "Sí, en Colombia, para pedidos desde $45.000. Pagas el envío por anticipado y el valor de los productos al recibir.",
+    respuesta: `Sí, en Colombia, para pedidos desde $${CONTRAENTREGA_MINIMO.toLocaleString("es-CO")} pesos. Pagas el envío por anticipado y el valor de los productos al recibir.`,
   },
   {
     pregunta: "¿Cómo puedo pagar?",
@@ -30,7 +30,7 @@ const PREGUNTAS = [
   },
   {
     pregunta: "¿Envían a otros países?",
-    respuesta: "Sí. A Panamá y Costa Rica el envío cuesta USD 25 hasta 1 kg más USD 6 por cada medio kilo adicional, puerta a puerta. A Ecuador, entre USD 40 y 50. Para Perú, Estados Unidos, Canadá y otros países te cotizamos por WhatsApp.",
+    respuesta: `Sí. A Panamá y Costa Rica el envío cuesta USD ${ENVIO_INTERNACIONAL_USD.base} hasta 1 kg más USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. A Ecuador, ${ENVIO_INTERNACIONAL_USD.ecuador}. Para Perú, Estados Unidos, Canadá y otros países te cotizamos por WhatsApp.`,
   },
   {
     pregunta: "¿Dan algún regalo?",

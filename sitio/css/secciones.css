@@ -300,3 +300,24 @@
 .ayuda-respuesta p { margin: 0; padding: 0 12px 12px; font-size: .9rem; color: var(--tinta-suave); }
 .ayuda-panel .boton { width: 100%; min-height: 46px; font-size: .92rem; }
 @media (max-width: 560px) { .ayuda-boton { bottom: calc(88px + env(safe-area-inset-bottom, 0px)); padding-right: 14px; font-size: .88rem; } }
+
+/* ----- Moneda local ----- */
+.bandera { display: block; padding: 0; border: 0; background: none; cursor: pointer; line-height: 0; border-radius: 4px; transition: transform .15s; }
+.bandera:hover { transform: translateY(-2px); }
+.bandera[aria-pressed="true"] svg { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--amarillo); }
+.moneda-selector { padding: 20px 24px; margin-bottom: 28px; display: grid; gap: 12px; }
+.moneda-selector:hover { transform: none; }
+.moneda-selector h3 { margin: 0; font-size: 1.05rem; }
+.moneda-selector__opciones { display: flex; flex-wrap: wrap; gap: 10px; }
+.moneda-opcion {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 10px; border: 1.5px solid var(--linea); border-radius: 999px;
+  background: #fff; font: 600 .9rem var(--fuente); color: var(--tinta); cursor: pointer;
+}
+.moneda-opcion svg { width: 24px; height: 16px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(20,32,51,.15); }
+.moneda-opcion small { font-weight: 700; color: var(--tinta-suave); }
+.moneda-opcion:hover { border-color: var(--azul); }
+.moneda-opcion[aria-pressed="true"] { border-color: var(--azul); background: var(--azul-claro); color: var(--azul-oscuro); }
+.moneda-opcion[aria-pressed="true"] small { color: var(--azul-oscuro); }
+.moneda-selector__nota { margin: 0; font-size: .88rem; color: var(--tinta-suave); }
+.totales__cop { font-size: .88rem; color: var(--tinta-suave); }
+@media (max-width: 560px) { .moneda-opcion span { display: none; } .moneda-opcion { padding: 8px 12px; } }

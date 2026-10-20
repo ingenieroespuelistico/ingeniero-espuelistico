@@ -5,12 +5,7 @@
   "nombre": "Espuela nueva",
   "detalle": "Descripción corta para la tarjeta",
   "medidas": [35, 38, 40],               // en líneas (mm)
-  "precios": {                           // precio por par EN BOLSA (caja +300, granel −200)
-    "minorista": 4000,                   // 1 a 119 pares
-    "mayorista": 3700,                   // 120 a 499
-    "distribuidor": 3350,                // 500 a 1.199
-    "gran_distribuidor": 3100            // 1.200 o más
-  },
+  // EL PRECIO NO VA AQUÍ: agrégalo en js/precios.js con este mismo "id"
   "pesoPar": 4.5,                        // gramos por par (para calcular el envío)
   "color": "#F2B705",                    // color del dibujo mientras no haya foto
   "descripcion": "Descripción larga que se ve al abrir el producto.",

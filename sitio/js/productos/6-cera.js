@@ -9,15 +9,11 @@
     {
       "id": "delgada",
       "nombre": "Delgada",
-      "unidad": 6500,
-      "docena": 50000,
       "peso": 33
     },
     {
       "id": "gruesa",
       "nombre": "Gruesa",
-      "unidad": 8000,
-      "docena": 60000,
       "peso": 71
     }
   ],

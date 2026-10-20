@@ -6,8 +6,8 @@
   "nombre": "Producto nuevo",
   "detalle": "Descripción corta para la tarjeta",
   "variantes": [
-    { "id": "pequeno", "nombre": "Pequeño", "precio": 10000, "peso": 50 },   // peso en gramos
-    { "id": "grande", "nombre": "Grande", "precio": 15000, "peso": 80 }
+    { "id": "pequeno", "nombre": "Pequeño", "peso": 50 },   // peso en gramos (el precio va en js/precios.js)
+    { "id": "grande", "nombre": "Grande", "peso": 80 }
   ],
   "descripcion": "Descripción larga que se ve al abrir el producto."
 });

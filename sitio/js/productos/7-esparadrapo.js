@@ -9,31 +9,26 @@
     {
       "id": "1",
       "nombre": "1 pulgada",
-      "precio": 16000,
       "peso": 54
     },
     {
       "id": "2",
       "nombre": "2 pulgadas",
-      "precio": 28000,
       "peso": 108
     },
     {
       "id": "3",
       "nombre": "3 pulgadas",
-      "precio": 35000,
       "peso": 162
     },
     {
       "id": "4",
       "nombre": "4 pulgadas",
-      "precio": 44000,
       "peso": 216
     },
     {
       "id": "tubo",
       "nombre": "Tubo surtido de 12 pulgadas",
-      "precio": 95000,
       "peso": 650,
       "nota": "1 rollo de 1\", 2 de 2\", 1 de 3\" y 1 de 4\""
     }

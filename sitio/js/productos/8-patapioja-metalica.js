@@ -9,22 +9,16 @@
     {
       "id": "estandar",
       "nombre": "Estándar",
-      "unidad": 4500,
-      "docena": 35000,
       "peso": 5
     },
     {
       "id": "torneo",
       "nombre": "De torneo",
-      "unidad": 4500,
-      "docena": 35000,
       "peso": 4
     },
     {
       "id": "realce",
       "nombre": "De realce",
-      "unidad": 6000,
-      "docena": 45000,
       "peso": 6
     }
   ],
