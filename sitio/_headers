@@ -8,7 +8,14 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(self)
   Cross-Origin-Opener-Policy: same-origin
 
-/js/*
+# Caché: precios, textos y estilos NO llevan caché larga (si cambias un precio, el cliente lo ve de inmediato;
+# el navegador solo pregunta "¿cambió?" y si no, usa su copia). Las librerías grandes que casi nunca cambian sí.
+# Ojo: no repitas una misma ruta en dos reglas, porque Cloudflare junta los valores.
+/js/espuela3d.min.js
   Cache-Control: public, max-age=604800
-/css/*
+/js/paises.min.js
   Cache-Control: public, max-age=604800
+/js/lugares/*
+  Cache-Control: public, max-age=604800
+/fotos/*
+  Cache-Control: public, max-age=86400
