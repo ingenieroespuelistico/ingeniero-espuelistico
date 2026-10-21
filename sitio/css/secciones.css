@@ -264,9 +264,15 @@
 .linea { grid-template-columns: 1fr auto; }
 .linea__acciones { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
 .cantidad { display: inline-flex; align-items: stretch; border: 1.5px solid var(--linea); border-radius: 999px; overflow: hidden; }
-.cantidad button { width: 38px; border: 0; background: var(--papel); font: 700 1.1rem var(--fuente); color: var(--tinta); cursor: pointer; }
+.cantidad button { width: 38px; border: 0; background: var(--papel); font: 700 1.1rem var(--fuente); color: var(--tinta); -webkit-text-fill-color: currentColor; -webkit-appearance: none; appearance: none; padding: 0; cursor: pointer; }
 .cantidad button:hover { background: var(--azul-claro); color: var(--azul); }
-.cantidad input { width: 64px; border: 0; text-align: center; font: 700 1rem var(--fuente); color: var(--tinta); -moz-appearance: textfield; }
+.cantidad input {
+  width: 64px; border: 0; border-radius: 0; text-align: center; font: 700 1.05rem var(--fuente);
+  /* Fondo y color explícitos: en celulares con modo oscuro el navegador pintaba el campo oscuro y el número no se veía */
+  background: #fff; color: #142033; -webkit-text-fill-color: #142033; opacity: 1;
+  -webkit-appearance: none; appearance: none; -moz-appearance: textfield;
+}
+.cantidad input:focus { outline: 2px solid var(--azul); outline-offset: -2px; }
 .cantidad input::-webkit-outer-spin-button, .cantidad input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .seguir-comprando { justify-self: start; background: none; border: 0; padding: 4px 0; font: 700 .95rem var(--fuente); color: var(--azul); cursor: pointer; }
 .boton--ancho { width: 100%; }
@@ -321,3 +327,7 @@
 .moneda-selector__nota { margin: 0; font-size: .88rem; color: var(--tinta-suave); }
 .totales__cop { font-size: .88rem; color: var(--tinta-suave); }
 @media (max-width: 560px) { .moneda-opcion span { display: none; } .moneda-opcion { padding: 8px 12px; } }
+
+/* Todos los campos del formulario con colores fijos (la página es clara siempre) */
+input, select, textarea { background-color: #fff; color: #142033; }
+@media (max-width: 560px) { .cantidad input { width: 56px; font-size: 1.1rem; } .cantidad button { width: 42px; } }
