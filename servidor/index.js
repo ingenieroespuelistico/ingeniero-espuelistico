@@ -19,6 +19,12 @@ export default {
       const respuesta = { ok: true, secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
       // Con ?revisar=1 prueba que cada token funcione (sin mostrar datos sensibles)
       if (url.searchParams.get("revisar") === "1") respuesta.conexiones = await revisarConexiones(env);
+      if (url.searchParams.get("estados") === "1") {
+        const r = await fetch("https://queries.envia.com/state?country_code=CO", { headers: { Authorization: `Bearer ${env.ENVIA_TOKEN}` } });
+        respuesta.estados = await r.json();
+        const l = await fetch("https://api.envia.com/locate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ city: "Ibagué", state: "TO", country: "CO" }) });
+        respuesta.locate = { estado: l.status, cuerpo: await l.text() };
+      }
       return json(respuesta);
     }
 
