@@ -1,0 +1,15 @@
+// Configuración de Cloudflare (Worker). La página está en sitio/ y el servidor en servidor/.
+{
+  "name": "ingeniero-espuelistico",
+  "main": "servidor/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./sitio",
+    "binding": "ASSETS",
+    // Solo las direcciones /api/... pasan por el servidor; todo lo demás se sirve directo (gratis e ilimitado)
+    "run_worker_first": ["/api/*"]
+  },
+  // No borrar las variables que se agreguen en el panel de Cloudflare al publicar desde GitHub
+  "keep_vars": true,
+  "observability": { "enabled": true }
+}
