@@ -390,6 +390,11 @@
     region: $("#campo-region"), regionLibre: $("#campo-region-libre"), ciudad: $("#campo-ciudad"), ciudadOtra: $("#campo-ciudad-otra"),
     alCambiar: () => { if (!panel.hidden) { pintarPagos(); actualizarEnvio(); } },
   }) : null;
+  // Al elegir departamento o municipio, se recalcula el envío
+  ["#campo-region", "#campo-ciudad", "#campo-ciudad-otra", "#campo-region-libre"].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.addEventListener("change", () => { if (!panel.hidden) setTimeout(actualizarEnvio, 0); });
+  });
 
   function pintarPedido() {
     const sub = subtotal();
