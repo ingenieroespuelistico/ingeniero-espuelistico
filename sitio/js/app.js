@@ -23,64 +23,15 @@
   try { pedido = JSON.parse(localStorage.getItem("ie-pedido") || "[]"); } catch (e) { pedido = []; }
   const guardar = () => { try { localStorage.setItem("ie-pedido", JSON.stringify(pedido)); } catch (e) {} };
 
-  const nivelPara = (pares) => [...NIVELES].reverse().find((n) => pares >= n.desde) || NIVELES[0];
-  const siguienteNivel = (pares) => NIVELES.find((n) => n.desde > pares);
-  const paresEspuela = (lista = pedido) => lista.filter((l) => prod(l.producto).tipo === "espuela").reduce((s, l) => s + l.cantidad, 0);
-  const paresPatapioja = (lista = pedido) => lista.filter((l) => l.producto === "patapioja").reduce((s, l) => s + l.cantidad, 0);
-  const precioParPatapioja = (pares) => [...prod("patapioja").tramos].reverse().find((t) => pares >= t.desde).precio;
-
-  function precioLinea(l, lista = pedido) {
-    const p = prod(l.producto);
-    if (p.tipo === "espuela") {
-      const nivel = nivelPara(paresEspuela(lista));
-      const ajuste = PRESENTACIONES.find((x) => x.id === l.presentacion).ajuste;
-      const unitario = p.precios[nivel.id] + ajuste;
-      return { unitario, total: unitario * l.cantidad };
-    }
-    if (p.tipo === "patapioja") {
-      const unitario = precioParPatapioja(paresPatapioja(lista));
-      return { unitario, total: Math.round(unitario * l.cantidad) };
-    }
-    if (p.tipo === "unidad-docena") {
-      const v = p.variantes.find((x) => x.id === l.variante);
-      const total = Math.floor(l.cantidad / 12) * v.docena + (l.cantidad % 12) * v.unidad;
-      return { unitario: null, total };
-    }
-    const v = p.variantes.find((x) => x.id === l.variante);
-    return { unitario: v.precio, total: v.precio * l.cantidad };
-  }
-  const subtotal = (lista = pedido) => lista.reduce((s, l) => s + precioLinea(l, lista).total, 0);
-
-  function pesoGramos() {
-    let g = 100; // empaque
-    pedido.forEach((l) => {
-      const p = prod(l.producto);
-      if (p.tipo === "espuela") g += l.cantidad * (p.pesoPar + (l.presentacion === "caja" ? 1 : 0));
-      else if (p.tipo === "patapioja") g += l.cantidad * p.pesoPar;
-      else g += l.cantidad * p.variantes.find((x) => x.id === l.variante).peso;
-    });
-    return g;
-  }
-
-  const regaloPara = (pares) => [...REGALOS].reverse().find((r) => pares >= r.desde);
-
-  function describirLinea(l) {
-    const p = prod(l.producto);
-    let nombre, base, unidad;
-    if (p.tipo === "espuela") {
-      const pres = PRESENTACIONES.find((x) => x.id === l.presentacion).nombre.toLowerCase();
-      nombre = p.nombre; base = `${medidaTexto(l.medida)} · ${pres}`; unidad = "pares";
-    } else if (p.tipo === "patapioja") {
-      nombre = `${p.nombre} ${p.colores.find((x) => x.id === l.color).nombre.toLowerCase()}`; base = ""; unidad = "pares";
-    } else {
-      const v = p.variantes.find((x) => x.id === l.variante);
-      if (p.tipo === "unidad-docena") { nombre = `${p.nombre} ${v.nombre.toLowerCase()}`; unidad = p.unidad === "barra" ? "barras" : "pares"; }
-      else { nombre = `${p.nombre} ${v.nombre}`; unidad = l.cantidad === 1 ? "unidad" : "unidades"; }
-      base = "";
-    }
-    const cant = `${l.cantidad} ${unidad}`;
-    return { nombre, base, detalle: base ? `${base} · ${cant}` : cant };
-  }
+  // Los cálculos de precio están en js/calculo.js (los comparte con el servidor)
+  const C = window.Calculo;
+  const nivelPara = C.nivelPara, siguienteNivel = C.siguienteNivel, precioParPatapioja = C.precioParPatapioja, regaloPara = C.regaloPara;
+  const paresEspuela = (lista = pedido) => C.paresEspuela(lista);
+  const paresPatapioja = (lista = pedido) => C.paresPatapioja(lista);
+  const precioLinea = (l, lista = pedido) => C.precioLinea(l, lista);
+  const subtotal = (lista = pedido) => C.subtotal(lista);
+  const pesoGramos = (lista = pedido) => C.pesoGramos(lista);
+  const describirLinea = (l) => C.describirLinea(l);
 
   function agregar(linea) {
     const igual = pedido.find((l) => ["producto", "medida", "presentacion", "color", "variante"].every((k) => l[k] === linea[k]));
@@ -395,7 +346,7 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !panel.hidden) cerrarPanel(); });
 
   function envioTexto(pais) {
-    if (pais === "Colombia") return { texto: "El costo del envío depende de tu ciudad. Te lo confirmamos por WhatsApp antes de pagar." };
+    if (pais === "Colombia") return { texto: "Calculamos el envío con la transportadora más económica para tu municipio (Interrapidísimo, Coordinadora o Servientrega)." };
     const regla = ENVIOS_INTERNACIONALES[pais];
     const kg = pesoGramos() / 1000;
     if (regla && regla.tipo === "formula") {
@@ -432,12 +383,12 @@
     $("#boton-confirmar").textContent = pago.startsWith("Pago en línea") ? "Confirmar pedido e ir a pago seguro"
       : pago === "Contraentrega" ? "Confirmar pedido contraentrega" : `Confirmar pedido y pagar por ${pago}`;
   }
-  $("#opciones-pago").addEventListener("change", textoConfirmar);
+  $("#opciones-pago").addEventListener("change", () => { textoConfirmar(); pintarEnvio(); });
   // País, indicativo, departamento y municipio del pedido
   const ubicacionPedido = window.Ubicacion ? window.Ubicacion.conectar({
     pais: $("#campo-pais"), paisOtro: $("#campo-pais-otro"), indicativo: $("#campo-indicativo"), celular: $("#campo-celular"),
     region: $("#campo-region"), regionLibre: $("#campo-region-libre"), ciudad: $("#campo-ciudad"), ciudadOtra: $("#campo-ciudad-otra"),
-    alCambiar: () => { if (!panel.hidden) pintarPagos(); },
+    alCambiar: () => { if (!panel.hidden) { pintarPagos(); actualizarEnvio(); } },
   }) : null;
 
   function pintarPedido() {
@@ -483,8 +434,62 @@
       ${regalo ? `<div><span>Regalo</span><strong>${regalo.pares} pares de patapioja</strong></div>` : ""}
       <div class="total"><span>Subtotal productos</span><span>${pesos(sub)}</span></div>
       ${window.Moneda && !Moneda.esCOP() ? `<div class="totales__cop"><span>Se cobra en pesos colombianos</span><span>${pesosCOP(sub)} COP</span></div>` : ""}
-      <div><span>Envío</span><span>Se confirma antes de pagar</span></div>`;
+      <div data-fila-envio><span>Envío</span><span data-envio>—</span></div>
+      <div class="total" data-fila-total hidden><span>Total a pagar</span><span data-total></span></div>`;
     pintarPagos();
+    actualizarEnvio();
+  }
+
+  /* ---------- Envío en Colombia: cotización automática ---------- */
+  let cotizacion = { clave: "", estado: "nada", datos: null };
+  let temporizadorEnvio = null;
+  const esColombia = () => !ubicacionPedido || ubicacionPedido.iso() === "CO";
+  const pagoElegido = () => (($("#opciones-pago input[name=pago]:checked") || {}).value || "");
+  const escapar = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  function claveEnvio() {
+    const u = ubicacionPedido;
+    if (!pedido.length || !esColombia() || !u || !u.region() || !u.ciudad()) return "";
+    return JSON.stringify([pedido.map((l) => [l.producto, l.cantidad, l.medida, l.presentacion, l.variante, l.color]), u.region(), u.ciudad()]);
+  }
+  function pintarEnvio() {
+    const celda = $("[data-envio]"), filaTotal = $("[data-fila-total]");
+    if (!celda) return;
+    const contra = pagoElegido() === "Contraentrega";
+    if (!esColombia()) { celda.textContent = "Te lo cotizamos por WhatsApp"; filaTotal.hidden = true; return; }
+    if (cotizacion.estado === "cargando") { celda.textContent = "Calculando…"; filaTotal.hidden = true; return; }
+    if (cotizacion.estado === "listo" && cotizacion.clave === claveEnvio()) {
+      const d = cotizacion.datos;
+      celda.innerHTML = `${pesos(d.valor)} <small>${escapar(d.transportadora)}${d.dias ? " · " + escapar(d.dias) : ""}</small>`;
+      filaTotal.hidden = false;
+      $("[data-total]").textContent = contra ? `${pesos(d.valor)} ahora + ${pesos(subtotal())} al recibir` : pesos(subtotal() + d.valor);
+      return;
+    }
+    if (cotizacion.estado === "error") { celda.textContent = cotizacion.datos; filaTotal.hidden = true; return; }
+    celda.textContent = "Elige tu municipio para calcularlo";
+    filaTotal.hidden = true;
+  }
+  function actualizarEnvio() {
+    const clave = claveEnvio();
+    if (!clave) { cotizacion = { clave: "", estado: "nada", datos: null }; pintarEnvio(); return; }
+    if (clave === cotizacion.clave && cotizacion.estado !== "error") { pintarEnvio(); return; }
+    cotizacion = { clave, estado: "cargando", datos: null };
+    pintarEnvio();
+    clearTimeout(temporizadorEnvio);
+    temporizadorEnvio = setTimeout(async () => {
+      try {
+        const r = await fetch("/api/cotizar", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pedido, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad() }),
+        });
+        const d = await r.json();
+        if (cotizacion.clave !== clave) return;
+        cotizacion = d.ok ? { clave, estado: "listo", datos: d } : { clave, estado: "error", datos: d.error || "No pudimos calcular el envío." };
+      } catch (e) {
+        if (cotizacion.clave !== clave) return;
+        cotizacion = { clave, estado: "error", datos: "No pudimos calcular el envío. Revisa tu conexión." };
+      }
+      pintarEnvio();
+    }, 400);
   }
 
   $("#formulario-pedido").addEventListener("submit", (e) => {
@@ -504,6 +509,11 @@
     error.textContent = "";
     const d = Object.fromEntries(new FormData(f));
     const paisNombre = u ? u.paisNombre() : "Colombia";
+    // En Colombia: pago en línea o contraentrega por Mercado Pago (el servidor recalcula precios y envío)
+    if (esColombia() && ((d.pago || "").startsWith("Pago en línea") || d.pago === "Contraentrega")) {
+      irAPagar(d, cel.numeroE164);
+      return;
+    }
     const pares = paresEspuela(), regalo = regaloPara(pares);
     const lineas = pedido.map((l) => { const x = describirLinea(l); return `• ${x.nombre}: ${x.detalle} = ${pesosCOP(precioLinea(l).total)}`; });
     const texto = [
@@ -520,6 +530,29 @@
     window.Medicion && Medicion.evento("InitiateCheckout", { value: Math.round(subtotal()), num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
     window.open(enlaceWA(texto), "_blank", "noopener");
   });
+
+  async function irAPagar(d, celular) {
+    const boton = $("#boton-confirmar"), error = $("#error-formulario");
+    const textoAntes = boton.textContent;
+    boton.disabled = true; boton.textContent = "Abriendo el pago seguro…";
+    try {
+      const r = await fetch("/api/pedido", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pedido, pago: d.pago === "Contraentrega" ? "contraentrega" : "en_linea", acepto: $("#pedido-acepto").checked,
+          cliente: { nombre: d.nombre, documento: d.documento, celular, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
+        }),
+      });
+      const res = await r.json();
+      if (!res.ok || !res.url || !/^https:\/\/([a-z0-9-]+\.)*mercadopago\.com(\.[a-z]{2})?\//.test(res.url)) throw new Error(res.error || "No pudimos abrir el pago.");
+      try { sessionStorage.setItem("ie-ultimo-pedido", JSON.stringify({ pedido: res.pedido, total: res.total })); } catch (e) {}
+      window.Medicion && Medicion.evento("InitiateCheckout", { value: res.total, num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
+      location.href = res.url;
+    } catch (e) {
+      error.textContent = e.message + " Si sigue fallando, escríbenos por WhatsApp.";
+      boton.disabled = false; boton.textContent = textoAntes;
+    }
+  }
 
   pintarPedido();
 

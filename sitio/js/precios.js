@@ -57,6 +57,21 @@ const CONTRAENTREGA_MINIMO = 45000;
 // Panamá y Costa Rica: base + valor por cada medio kilo adicional después del primer kilo.
 const ENVIO_INTERNACIONAL_USD = { base: 25, porMedioKiloExtra: 6, ecuador: "USD 40 a 50" };
 
+/* ---------- ENVÍO EN COLOMBIA (cotización automática con Envia) ---------- */
+// La página consulta en Envia el flete de cada transportadora de la lista y le cobra al cliente el MÁS BARATO,
+// redondeado hacia arriba. Nombres válidos: interRapidisimo, coordinadora, serviEntrega, tcc, envia, noventa9Minutos.
+const ENVIO_NACIONAL = {
+  transportadoras: ["interRapidisimo", "coordinadora", "serviEntrega"],
+  redondearA: 1000,      // el flete se redondea hacia arriba a este múltiplo (1000 → $12.340 queda en $13.000)
+  recargo: 0,            // pesos que se suman a cada envío (por ejemplo, costo de la caja). 0 = nada
+  // Caja que se usa según el peso del pedido (gramos). Medidas en centímetros.
+  cajas: [
+    { hastaGramos: 1000, largo: 20, ancho: 15, alto: 10 },
+    { hastaGramos: 5000, largo: 30, ancho: 25, alto: 20 },
+    { hastaGramos: 1000000, largo: 40, ancho: 30, alto: 30 },
+  ],
+};
+
 /* ---------- TASAS DE CAMBIO DE RESPALDO ---------- */
 // La página consulta la tasa del día automáticamente. Estas solo se usan si esa consulta falla
 // (sin internet, o el servicio caído). Unidades de cada moneda por 1 dólar. No hace falta tocarlas

@@ -346,3 +346,11 @@ input, select, textarea { background-color: #fff; color: #142033; }
 .aviso-cookies__no { background: #fff; color: var(--tinta); border: 1.5px solid var(--linea); }
 .aviso-cookies__no:hover { border-color: var(--tinta-suave); }
 @media (max-width: 560px) { .aviso-cookies { bottom: 84px; padding: 14px; } }
+
+/* ----- Página de gracias ----- */
+.gracias { text-align: center; padding: 48px 16px 64px; max-width: 640px; }
+.gracias__icono { font-size: 3rem; margin: 0; }
+.gracias__pedido { font-weight: 700; color: var(--tinta-suave); }
+.gracias__botones { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 24px; }
+.totales small { color: var(--tinta-suave); font-weight: 500; }
+.boton:disabled { opacity: .7; cursor: progress; }
