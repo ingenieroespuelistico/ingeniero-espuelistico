@@ -9,6 +9,8 @@ Precios (todos, en pesos colombianos)       js/precios.js
     metálica, esparadrapo
   · recargo de caja / descuento a granel
   · mínimo para contraentrega
+  · envío en Colombia: transportadoras, cajas,
+    redondeo y recargo (ENVIO_NACIONAL)
   · tarifa de envío internacional (USD)
   · tasas de cambio de respaldo
 Palabras con las que buscan un producto     js/sinonimos.js
@@ -33,3 +35,11 @@ DESPUÉS DE EDITAR
 - Cuando la página esté en internet: sube el cambio a GitHub y Netlify la actualiza sola
   en 1–2 minutos. (Más adelante podemos poner un panel web con usuario y clave para
   editar precios desde el celular.)
+
+PAGOS Y AVISOS (ya funcionan)
+- En Colombia el cliente paga en línea con Mercado Pago (PSE, tarjeta, Efecty, Bancolombia).
+  El servidor recalcula precios y envío; nadie puede cambiar el precio desde su navegador.
+- El envío se cotiza solo con Envia y se cobra la transportadora más barata de la lista.
+- Cada pago aprobado o pendiente te llega por Telegram con productos, cliente y dirección.
+- Los tokens están guardados en Cloudflare (Worker → Settings → Variables and Secrets).
+  Para revisar que todo esté conectado abre: /api/salud?revisar=1
