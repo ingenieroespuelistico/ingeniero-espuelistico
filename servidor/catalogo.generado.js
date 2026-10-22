@@ -253,10 +253,12 @@ const CONTRAENTREGA_MINIMO = 45000;
 const ENVIO_INTERNACIONAL_USD = { base: 25, porMedioKiloExtra: 6, ecuador: "USD 40 a 50" };
 
 /* ---------- ENVÍO EN COLOMBIA (cotización automática con Envia) ---------- */
-// La página consulta en Envia el flete de cada transportadora de la lista y le cobra al cliente el MÁS BARATO,
-// redondeado hacia arriba. Nombres válidos: interRapidisimo, coordinadora, serviEntrega, tcc, envia, noventa9Minutos.
+// Siempre se cotiza con UNA transportadora (la del convenio de pago en casa). Si el cliente elige contraentrega,
+// la cotización incluye el costo del recaudo, así que el envío sale más caro.
+// Servicios de Interrapidísimo en Envia: "ground_small" = Mensajería a domicilio, "mensajeria_do" = Domicilio - Oficina.
 const ENVIO_NACIONAL = {
-  transportadoras: ["interRapidisimo", "coordinadora", "serviEntrega"],
+  transportadora: "interRapidisimo",
+  servicio: "ground_small",
   redondearA: 1000,      // el flete se redondea hacia arriba a este múltiplo (1000 → $12.340 queda en $13.000)
   recargo: 0,            // pesos que se suman a cada envío (por ejemplo, costo de la caja). 0 = nada
   // Caja que se usa según el peso del pedido (gramos). Medidas en centímetros.

@@ -9,7 +9,7 @@
 
 import { Tienda } from "./catalogo.generado.js";
 
-const VERSION = "2026-10-22.1";
+const VERSION = "2026-10-22.2";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -128,14 +128,14 @@ function cajaPara(gramos) {
   return cajas.find((c) => gramos <= c.hastaGramos) || cajas[cajas.length - 1];
 }
 
-async function fleteColombia({ lineas, departamento, ciudad, destinatario }, env) {
+async function fleteColombia({ lineas, departamento, ciudad, destinatario, contraentrega }, env) {
   const dane = await codigoDANE(departamento, ciudad);
   if (!dane) return { ok: false, error: "No encontramos tu municipio en la transportadora. Escríbenos por WhatsApp y te cotizamos." };
   const gramos = C.pesoGramos(lineas);
   const valor = C.subtotal(lineas);
   const caja = cajaPara(gramos);
   const kg = Math.max(0.1, Math.ceil(gramos / 100) / 10);
-  const clave = `flete:${dane.city}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${Math.ceil(valor / 50000)}`;
+  const clave = `flete2:${dane.city}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${contraentrega ? "cod" + Math.round(valor) : Math.ceil(valor / 50000)}`;
   const cfg = Tienda.ENVIO_NACIONAL;
 
   const mejor = await enCache(clave, 1800, async () => {
@@ -148,23 +148,22 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario }, env
       type: "box", content: "Accesorios plasticos", amount: 1, name: "Caja", declaredValue: Math.max(10000, Math.round(valor)),
       lengthUnit: "CM", weightUnit: "KG", weight: kg, dimensions: { length: caja.largo, width: caja.ancho, height: caja.alto },
     };
-    const consultas = cfg.transportadoras.map(async (carrier) => {
-      try {
-        const r = await fetch("https://api.envia.com/ship/rate/", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` },
-          body: JSON.stringify({ origin: ORIGEN, destination: destino, packages: [paquete], shipment: { type: 1, carrier }, settings: { currency: "COP" } }),
-        });
-        const d = await r.json().catch(() => null);
-        if (!r.ok || !d || !Array.isArray(d.data)) { console.log("Envia sin tarifa", carrier, r.status, JSON.stringify(d).slice(0, 300)); return []; }
-        return d.data.filter((t) => Number(t.totalPrice) > 0).map((t) => ({
-          transportadora: t.carrierDescription || t.carrier || carrier, servicio: t.serviceDescription || t.service || "",
-          precio: Number(t.totalPrice), dias: t.deliveryEstimate || "", carrier: t.carrier || carrier, service: t.service || "",
-        }));
-      } catch (e) { console.log("Envia error", carrier, String(e)); return []; }
+    // Una sola transportadora (la del convenio). Con contraentrega se pide el servicio de recaudo por el valor de los productos.
+    if (contraentrega) paquete.additionalServices = [{ service: "cash_on_delivery", data: { amount: Math.round(valor) } }];
+    const r = await fetch("https://api.envia.com/ship/rate/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` },
+      body: JSON.stringify({ origin: ORIGEN, destination: destino, packages: [paquete], shipment: { type: 1, carrier: cfg.transportadora }, settings: { currency: "COP" } }),
     });
-    const tarifas = (await Promise.all(consultas)).flat().sort((a, b) => a.precio - b.precio);
-    return tarifas[0] || null;
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !d || !Array.isArray(d.data)) { console.log("Envia sin tarifa", r.status, JSON.stringify(d).slice(0, 300)); return null; }
+    const t = d.data.find((x) => x.service === cfg.servicio) || d.data[0];
+    if (!t || !(Number(t.totalPrice) > 0)) return null;
+    const recaudo = contraentrega ? Number(t.cashOnDeliveryCommission || 0) : 0;
+    return {
+      transportadora: t.carrierDescription || "Interrapidísimo", servicio: t.serviceDescription || t.service || "",
+      precio: Number(t.totalPrice) + recaudo, recaudo, dias: t.deliveryEstimate || "", carrier: t.carrier, service: t.service,
+    };
   });
 
   if (!mejor) return { ok: false, error: "No pudimos cotizar el envío a tu municipio. Escríbenos por WhatsApp y te lo cotizamos." };
@@ -172,6 +171,7 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario }, env
   const cobro = Math.ceil((mejor.precio + (cfg.recargo || 0)) / paso) * paso;
   return {
     ok: true, valor: cobro, transportadora: mejor.transportadora, servicio: mejor.servicio, dias: mejor.dias,
+    contraentrega: Boolean(contraentrega), recaudo: mejor.recaudo || 0,
     municipio: dane.nombre, dane: dane.city, pesoKg: kg, carrier: mejor.carrier, service: mejor.service,
   };
 }
@@ -179,7 +179,8 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario }, env
 async function cotizar(cuerpo, env) {
   const lineas = lineasLimpias(cuerpo.pedido);
   if (!lineas) return error("El pedido no es válido. Recarga la página e intenta de nuevo.");
-  const r = await fleteColombia({ lineas, departamento: texto(cuerpo.departamento, 80), ciudad: texto(cuerpo.ciudad, 80) }, env);
+  const contraentrega = cuerpo.pago === "contraentrega";
+  const r = await fleteColombia({ lineas, departamento: texto(cuerpo.departamento, 80), ciudad: texto(cuerpo.ciudad, 80), contraentrega }, env);
   if (!r.ok) return json(r, 200);
   const { carrier, service, dane, ...publico } = r;
   return json(publico);
@@ -210,7 +211,7 @@ async function crearPedido(cuerpo, url, env) {
   const subtotal = Math.round(C.subtotal(lineas));
   if (contraentrega && subtotal < Tienda.CONTRAENTREGA_MINIMO) return error(`La contraentrega es para pedidos desde ${pesos(Tienda.CONTRAENTREGA_MINIMO)}.`);
 
-  const envio = await fleteColombia({ lineas, departamento: cliente.departamento, ciudad: cliente.ciudad, destinatario: cliente }, env);
+  const envio = await fleteColombia({ lineas, departamento: cliente.departamento, ciudad: cliente.ciudad, destinatario: cliente, contraentrega }, env);
   if (!envio.ok) return error(envio.error);
 
   const id = idPedido();
@@ -253,6 +254,7 @@ async function crearPedido(cuerpo, url, env) {
       productos: resumen.join(" | ").slice(0, 1500),
       subtotal_productos: subtotal, cobrar_al_recibir: contraentrega ? subtotal : 0,
       envio: `${envio.transportadora} ${envio.servicio} ${envio.dias}`.trim(), envio_valor: envio.valor, envio_peso_kg: envio.pesoKg,
+      envio_recaudo: envio.recaudo || 0,
       regalo: regalo ? `${regalo.pares} pares de patapioja sintética` : "",
     },
   };
@@ -322,7 +324,7 @@ async function procesarPago(id, env) {
     aprobado ? "✅ <b>PAGO APROBADO</b>" : "⏳ <b>PAGO PENDIENTE</b> (aún no ha pagado; por ejemplo Efecty sin pagar)",
     `Pedido: <b>${esc(m.pedido || p.external_reference)}</b>${p.live_mode === false ? " · PRUEBA" : ""}`,
     `Pagado: <b>${pesos(p.transaction_amount)}</b> por ${esc(medio)}`,
-    m.tipo === "contraentrega" ? `💵 <b>CONTRAENTREGA</b>: cobrar ${pesos(m.cobrar_al_recibir)} al entregar (el envío ya está pagado)` : "",
+    m.tipo === "contraentrega" ? `💵 <b>CONTRAENTREGA</b>: la transportadora cobra ${pesos(m.cobrar_al_recibir)} al entregar (el envío ya está pagado, incluye recaudo de ${pesos(m.envio_recaudo || 0)})` : "",
     "",
     `<b>Productos</b>\n${esc(String(m.productos || "").split(" | ").map((x) => "• " + x).join("\n"))}`,
     m.regalo ? `🎁 Regalo: ${esc(m.regalo)}` : "",
@@ -332,6 +334,8 @@ async function procesarPago(id, env) {
     `📱 ${esc(m.cliente_celular)}`,
     `📍 ${esc(m.destino)}`,
     `Pago Mercado Pago #${esc(p.id)}`,
+    "",
+    aprobado ? `👉 Siguiente paso: genera la guía en Envia con ${esc(Tienda.ENVIO_NACIONAL.transportadora)}${m.tipo === "contraentrega" ? ` <b>con contraentrega por ${pesos(m.cobrar_al_recibir)}</b>` : ""}, despacha y envíale la guía al cliente por WhatsApp.` : "",
   ].filter((x) => x !== "").join("\n");
   await telegram(env, lineas);
 }
@@ -362,18 +366,6 @@ async function salud(url, env) {
   const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"];
   const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
   if (url.searchParams.get("revisar") === "1") respuesta.conexiones = await revisarConexiones(env);
-  if (url.searchParams.get("cod") === "1") {
-    const destino = { name: "Prueba", phone: "3000000000", street: "Calle 1", number: "", district: "", city: "05001000", state: "AN", country: "CO", postalCode: "05001000" };
-    const paquete = { type: "box", content: "Accesorios", amount: 1, declaredValue: 60000, lengthUnit: "CM", weightUnit: "KG", weight: 0.3, dimensions: { length: 20, width: 15, height: 10 } };
-    const pedir = async (extra) => {
-      const r = await fetch("https://api.envia.com/ship/rate/", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` },
-        body: JSON.stringify({ origin: ORIGEN, destination: destino, packages: [{ ...paquete, ...(extra || {}) }], shipment: { type: 1, carrier: "interRapidisimo" }, settings: { currency: "COP" } }) });
-      const d = await r.json().catch(() => null);
-      return { estado: r.status, tarifas: d && Array.isArray(d.data) ? d.data.map((t) => ({ servicio: t.service, desc: t.serviceDescription, id: t.serviceId, total: t.totalPrice, base: t.basePrice, cod: t.cashOnDeliveryCommission, extras: t.additionalServices, cargos: t.additionalCharges, dias: t.deliveryEstimate })) : d };
-    };
-    respuesta.sinCOD = await pedir();
-    respuesta.conCOD = await pedir({ additionalServices: [{ service: "cash_on_delivery", data: { amount: 60000 } }] });
-  }
   return json(respuesta);
 }
 

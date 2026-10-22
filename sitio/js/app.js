@@ -32,6 +32,7 @@
   const subtotal = (lista = pedido) => C.subtotal(lista);
   const pesoGramos = (lista = pedido) => C.pesoGramos(lista);
   const describirLinea = (l) => C.describirLinea(l);
+  const textoPeso = (g) => g >= 1000 ? `${(g / 1000).toLocaleString("es-CO", { maximumFractionDigits: 2 })} kg` : `${Math.round(g)} g`;
 
   function agregar(linea) {
     const igual = pedido.find((l) => ["producto", "medida", "presentacion", "color", "variante"].every((k) => l[k] === linea[k]));
@@ -346,7 +347,7 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !panel.hidden) cerrarPanel(); });
 
   function envioTexto(pais) {
-    if (pais === "Colombia") return { texto: "Calculamos el envío con la transportadora más económica para tu municipio (Interrapidísimo, Coordinadora o Servientrega)." };
+    if (pais === "Colombia") return { texto: "Enviamos con Interrapidísimo. El valor se calcula según tu municipio y el peso del paquete; con contraentrega incluye el costo del recaudo." };
     const regla = ENVIOS_INTERNACIONALES[pais];
     const kg = pesoGramos() / 1000;
     if (regla && regla.tipo === "formula") {
@@ -380,10 +381,12 @@
   // El botón dice a dónde lleva según la forma de pago
   function textoConfirmar() {
     const pago = ($("#opciones-pago input[name=pago]:checked") || {}).value || "";
-    $("#boton-confirmar").textContent = pago.startsWith("Pago en línea") ? "Confirmar pedido e ir a pago seguro"
-      : pago === "Contraentrega" ? "Confirmar pedido contraentrega" : `Confirmar pedido y pagar por ${pago}`;
+    $("#boton-confirmar-texto").textContent = pago.startsWith("Pago en línea") ? "Confirmar pedido e ir a pago seguro"
+      : pago === "Contraentrega" ? "Confirmar contraentrega y pagar el envío" : `Confirmar pedido y pagar por ${pago}`;
+    $("#sello-pago").hidden = !(pago.startsWith("Pago en línea") || pago === "Contraentrega");
   }
-  $("#opciones-pago").addEventListener("change", () => { textoConfirmar(); pintarEnvio(); });
+  // Al cambiar la forma de pago se vuelve a cotizar: la contraentrega incluye el costo del recaudo
+  $("#opciones-pago").addEventListener("change", () => { textoConfirmar(); actualizarEnvio(); });
   // País, indicativo, departamento y municipio del pedido
   const ubicacionPedido = window.Ubicacion ? window.Ubicacion.conectar({
     pais: $("#campo-pais"), paisOtro: $("#campo-pais-otro"), indicativo: $("#campo-indicativo"), celular: $("#campo-celular"),
@@ -410,7 +413,7 @@
       cont.innerHTML = pedido.map((l, i) => {
         const d = describirLinea(l), pr = precioLinea(l);
         return `<div class="linea"><span class="linea__nombre">${d.nombre}</span><span class="linea__total">${pesos(pr.total)}</span>
-          <span class="linea__detalle">${[d.base, pr.unitario && prod(l.producto).tipo !== "variantes" ? `${pesos(pr.unitario)} c/u` : ""].filter(Boolean).join(" · ")}</span>
+          <span class="linea__detalle">${[d.base, pr.unitario && prod(l.producto).tipo !== "variantes" ? `${pesos(pr.unitario)} c/u` : "", `<span class="linea__peso">${textoPeso(C.pesoGramos([l]) - 100)}</span>`].filter(Boolean).join(" · ")}</span>
           <div class="linea__acciones">
             <div class="cantidad" role="group" aria-label="Cantidad de ${d.nombre}">
               <button type="button" data-menos="${i}" aria-label="Quitar uno">−</button>
@@ -438,6 +441,7 @@
       ${nivel ? `<div><span>Precio de espuela aplicado</span><strong>${nivel.nombre} (${pares} pares)</strong></div>` : ""}
       ${regalo ? `<div><span>Regalo</span><strong>${regalo.pares} pares de patapioja</strong></div>` : ""}
       <div class="total"><span>Subtotal productos</span><span>${pesos(sub)}</span></div>
+      ${pedido.length ? `<div><span>Peso aproximado del paquete</span><span>${textoPeso(pesoGramos())}</span></div>` : ""}
       ${window.Moneda && !Moneda.esCOP() ? `<div class="totales__cop"><span>Se cobra en pesos colombianos</span><span>${pesosCOP(sub)} COP</span></div>` : ""}
       <div data-fila-envio><span>Envío</span><span data-envio>—</span></div>
       <div class="total" data-fila-total hidden><span>Total a pagar</span><span data-total></span></div>`;
@@ -454,7 +458,7 @@
   function claveEnvio() {
     const u = ubicacionPedido;
     if (!pedido.length || !esColombia() || !u || !u.region() || !u.ciudad()) return "";
-    return JSON.stringify([pedido.map((l) => [l.producto, l.cantidad, l.medida, l.presentacion, l.variante, l.color]), u.region(), u.ciudad()]);
+    return JSON.stringify([pedido.map((l) => [l.producto, l.cantidad, l.medida, l.presentacion, l.variante, l.color]), u.region(), u.ciudad(), pagoElegido() === "Contraentrega"]);
   }
   function pintarEnvio() {
     const celda = $("[data-envio]"), filaTotal = $("[data-fila-total]");
@@ -464,7 +468,7 @@
     if (cotizacion.estado === "cargando") { celda.textContent = "Calculando…"; filaTotal.hidden = true; return; }
     if (cotizacion.estado === "listo" && cotizacion.clave === claveEnvio()) {
       const d = cotizacion.datos;
-      celda.innerHTML = `${pesos(d.valor)} <small>${escapar(d.transportadora)}${d.dias ? " · " + escapar(d.dias) : ""}</small>`;
+      celda.innerHTML = `${pesos(d.valor)} <small>${escapar(d.transportadora)}${d.dias ? " · " + escapar(d.dias) : ""}${d.contraentrega ? " · incluye recaudo contraentrega" : ""}</small>`;
       filaTotal.hidden = false;
       $("[data-total]").textContent = contra ? `${pesos(d.valor)} ahora + ${pesos(subtotal())} al recibir` : pesos(subtotal() + d.valor);
       return;
@@ -484,7 +488,7 @@
       try {
         const r = await fetch("/api/cotizar", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pedido, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad() }),
+          body: JSON.stringify({ pedido, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), pago: pagoElegido() === "Contraentrega" ? "contraentrega" : "en_linea" }),
         });
         const d = await r.json();
         if (cotizacion.clave !== clave) return;
@@ -537,9 +541,9 @@
   });
 
   async function irAPagar(d, celular) {
-    const boton = $("#boton-confirmar"), error = $("#error-formulario");
-    const textoAntes = boton.textContent;
-    boton.disabled = true; boton.textContent = "Abriendo el pago seguro…";
+    const boton = $("#boton-confirmar"), etiqueta = $("#boton-confirmar-texto"), error = $("#error-formulario");
+    const textoAntes = etiqueta.textContent;
+    boton.disabled = true; etiqueta.textContent = "Abriendo el pago seguro…";
     try {
       const r = await fetch("/api/pedido", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -555,7 +559,7 @@
       location.href = res.url;
     } catch (e) {
       error.textContent = e.message + " Si sigue fallando, escríbenos por WhatsApp.";
-      boton.disabled = false; boton.textContent = textoAntes;
+      boton.disabled = false; etiqueta.textContent = textoAntes;
     }
   }
 
