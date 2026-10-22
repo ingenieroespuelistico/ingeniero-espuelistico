@@ -36,9 +36,12 @@ async function revisarConexiones(env) {
       return { ok: r.ok, pais: d.site_id, cuentaDePrueba: Array.isArray(d.tags) ? d.tags.includes("test_user") : undefined, estado: r.ok ? undefined : r.status };
     }),
     probar(async () => {
-      const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/getMe`);
+      const t = String(env.TELEGRAM_TOKEN || "").trim().replace(/^bot/i, "");
+      const r = await fetch(`https://api.telegram.org/bot${t}/getMe`);
       const d = await r.json();
-      return { ok: Boolean(d.ok), bot: d.result && d.result.username };
+      // Pistas del formato sin mostrar el token: debe ser "números:letras" (ej. 123456789:AAH...)
+      const forma = /^\d{6,12}:[A-Za-z0-9_-]{30,}$/.test(t) ? "correcta" : `incorrecta (largo ${t.length}, ${t.includes(":") ? "tiene" : "NO tiene"} dos puntos)`;
+      return { ok: Boolean(d.ok), bot: d.result && d.result.username, error: d.ok ? undefined : d.description, formaDelToken: forma };
     }),
     probar(async () => {
       const r = await fetch("https://queries.envia.com/carrier?country_code=CO", { headers: { Authorization: `Bearer ${env.ENVIA_TOKEN}` } });
