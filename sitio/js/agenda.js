@@ -103,6 +103,7 @@
       d.get("nota") ? `Comentario: ${d.get("nota")}` : "",
     ].filter(Boolean).join("\n");
     const url = `https://wa.me/${typeof NEGOCIO !== "undefined" ? NEGOCIO.whatsapp : "573019580737"}?text=${encodeURIComponent(texto)}`;
+    window.Medicion && Medicion.evento("Schedule", {});
     window.open(url, "_blank", "noopener");
     $("#agenda-aviso").textContent = `Listo. Envía el mensaje de WhatsApp que se abrió y te confirmamos la llamada del ${fechaLarga.format(dia)} a las ${hhmm(Number(d.get("hora")))}.`;
   });

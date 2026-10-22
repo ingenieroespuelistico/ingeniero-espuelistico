@@ -11,5 +11,9 @@
   },
   // No borrar las variables que se agreguen en el panel de Cloudflare al publicar desde GitHub
   "keep_vars": true,
+  // Datos NO secretos (los tokens van como "Secret" en el panel de Cloudflare, nunca aquí)
+  "vars": {
+    "TELEGRAM_CHAT_ID": "8408950717"
+  },
   "observability": { "enabled": true }
 }

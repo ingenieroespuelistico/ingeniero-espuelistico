@@ -314,6 +314,7 @@
     $("#ficha-titulo").textContent = p.nombre;
     $("#ficha-detalle").textContent = p.detalle;
     $("#ficha-descripcion").textContent = FICHAS[id].descripcion;
+    window.Medicion && Medicion.evento("ViewContent", { content_ids: [id], content_name: p.nombre, content_type: "product" });
     $("#ficha-dureza").innerHTML = barraDureza(p);
     $("#ficha-campos").innerHTML = camposFicha(p);
     $("#ficha-agregado").textContent = "";
@@ -362,8 +363,10 @@
   $("#ficha-formulario").addEventListener("change", actualizarPrecioFicha);
   $("#ficha-formulario").addEventListener("submit", (e) => {
     e.preventDefault();
-    agregar(lineaDesdeFormulario(e.target, fichaProducto.id));
+    const nueva = lineaDesdeFormulario(e.target, fichaProducto.id);
+    agregar(nueva);
     actualizarPrecioFicha();
+    window.Medicion && Medicion.evento("AddToCart", { value: Math.round(precioLinea(nueva).total), content_ids: [fichaProducto.id], content_name: fichaProducto.nombre, content_type: "product" });
     const aviso = $("#ficha-agregado");
     aviso.innerHTML = `Agregado a tu pedido. <a href="#" data-ver>Ver pedido</a>`;
     $("[data-ver]", aviso).addEventListener("click", (ev) => { ev.preventDefault(); cerrarFicha(); abrirPanel(); });
@@ -514,6 +517,7 @@
       `Nombre: ${d.nombre}`, `Documento: ${d.documento}`, `Celular: ${cel.numeroE164}`,
       `País: ${paisNombre}`, `Región: ${u ? u.region() : ""}`, `Ciudad: ${u ? u.ciudad() : ""}`, `Dirección: ${d.direccion}`,
     ].filter(Boolean).join("\n");
+    window.Medicion && Medicion.evento("InitiateCheckout", { value: Math.round(subtotal()), num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
     window.open(enlaceWA(texto), "_blank", "noopener");
   });
 

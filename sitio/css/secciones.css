@@ -331,3 +331,18 @@
 /* Todos los campos del formulario con colores fijos (la página es clara siempre) */
 input, select, textarea { background-color: #fff; color: #142033; }
 @media (max-width: 560px) { .cantidad input { width: 56px; font-size: 1.1rem; } .cantidad button { width: 42px; } }
+
+/* ----- Aviso de cookies ----- */
+.aviso-cookies {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 60; max-width: 560px; margin: 0 auto;
+  background: #fff; color: var(--tinta); border: 1px solid var(--linea); border-radius: 16px; padding: 16px 18px;
+  box-shadow: 0 18px 50px rgba(20,32,51,.18); display: grid; gap: 12px; font-size: .92rem;
+}
+.aviso-cookies[hidden] { display: none; }
+.aviso-cookies p { margin: 0; color: var(--tinta-suave); }
+.aviso-cookies strong { color: var(--tinta); }
+.aviso-cookies__botones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.aviso-cookies__botones .boton { justify-content: center; width: 100%; }
+.aviso-cookies__no { background: #fff; color: var(--tinta); border: 1.5px solid var(--linea); }
+.aviso-cookies__no:hover { border-color: var(--tinta-suave); }
+@media (max-width: 560px) { .aviso-cookies { bottom: 84px; } }
