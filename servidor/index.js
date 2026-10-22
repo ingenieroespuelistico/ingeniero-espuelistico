@@ -362,6 +362,18 @@ async function salud(url, env) {
   const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"];
   const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
   if (url.searchParams.get("revisar") === "1") respuesta.conexiones = await revisarConexiones(env);
+  if (url.searchParams.get("cod") === "1") {
+    const destino = { name: "Prueba", phone: "3000000000", street: "Calle 1", number: "", district: "", city: "05001000", state: "AN", country: "CO", postalCode: "05001000" };
+    const paquete = { type: "box", content: "Accesorios", amount: 1, declaredValue: 60000, lengthUnit: "CM", weightUnit: "KG", weight: 0.3, dimensions: { length: 20, width: 15, height: 10 } };
+    const pedir = async (extra) => {
+      const r = await fetch("https://api.envia.com/ship/rate/", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` },
+        body: JSON.stringify({ origin: ORIGEN, destination: destino, packages: [{ ...paquete, ...(extra || {}) }], shipment: { type: 1, carrier: "interRapidisimo" }, settings: { currency: "COP" } }) });
+      const d = await r.json().catch(() => null);
+      return { estado: r.status, tarifas: d && Array.isArray(d.data) ? d.data.map((t) => ({ servicio: t.service, desc: t.serviceDescription, id: t.serviceId, total: t.totalPrice, base: t.basePrice, cod: t.cashOnDeliveryCommission, extras: t.additionalServices, cargos: t.additionalCharges, dias: t.deliveryEstimate })) : d };
+    };
+    respuesta.sinCOD = await pedir();
+    respuesta.conCOD = await pedir({ additionalServices: [{ service: "cash_on_delivery", data: { amount: 60000 } }] });
+  }
   return json(respuesta);
 }
 
