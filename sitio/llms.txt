@@ -1,0 +1,23 @@
+# Ingeniero Espuelístico
+
+> Fábrica de espuelas para gallos y accesorios en Ibagué, Tolima, Colombia. Más de 25 años de tradición familiar. Venta al detal y por mayor, envíos a toda Colombia y exportación a Ecuador, Perú, Panamá, Costa Rica, Estados Unidos y Canadá.
+
+- Tienda: https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/
+- WhatsApp: +57 301 958 0737
+- Horario: Lun a vie 8:00 a.m. – 7:00 p.m. · Sáb 8:00 a.m. – 2:00 p.m.
+- Pagos: Mercado Pago (PSE, tarjeta, Efecty), contraentrega en Colombia; PayPal o Western Union desde el exterior.
+
+## Productos
+- [Espuela acrílica amarilla](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-acrilica-amarilla): Translúcida, con casquillo metálico. Desde $2.900 el par.
+- [Espuela negra reforzada](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-negra-reforzada): Material reforzado, con casquillo metálico. Desde $2.900 el par.
+- [Espuela blanca enteriza](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-blanca-enteriza): Sintética de una sola pieza, sin casquillo. Desde $2.800 el par.
+- [Espuela negra enteriza](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-negra-enteriza): Reforzada de una sola pieza, sin casquillo. Desde $2.800 el par.
+- [Patapioja sintética](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-sintetica): También llamada patera, zapatola o parrilla. Desde $1.300 el par.
+- [Cera amarilla en barra](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/cera-amarilla-en-barra): Delgada o gruesa. Se vende por barra o por docena. Desde $4.167 la barra.
+- [Esparadrapo](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/esparadrapo): Rollos de 10 yardas de largo. Elige el ancho. Desde $16.000 .
+- [Patapioja metálica](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-metalica): Estándar, de torneo (más pequeña) o de realce. Desde $2.917 el par.
+
+## Políticas
+- [Cambios y devoluciones](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/devoluciones)
+- [Términos y condiciones](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/terminos)
+- [Privacidad](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/privacidad)

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><style>.g-a{fill:#142033}.g-b{fill:#1E3150}.g-d{fill:#0B1424}.g-r{fill:#C8102E}.g-y{fill:#E3A400}.g-y2{fill:#B98500}.g-e{fill:#F2B705}.gallo__patas-salto,.gallo__ala-abierta,.gallo__pata-salto{display:none}</style><rect width="64" height="64" rx="14" fill="#FFFFFF"/><svg x="1" y="6" width="46" height="46" viewBox="35 64 300 300"><g class="gallo__cola">
+  <polygon class="g-d" points="176,206 132,138 84,96 118,140 160,214"/>
+  <polygon class="g-a" points="172,212 104,158 52,140 96,170 158,226"/>
+  <polygon class="g-b" points="170,222 96,200 42,204 92,216 160,238"/>
+  <polygon class="g-d" points="172,232 108,250 64,282 110,262 168,248"/>
+</g>
+<g class="gallo__patas-parado">
+  <polygon class="g-y2" points="236,276 246,276 240,334 232,334"/>
+  <polygon class="g-y2" points="232,330 214,342 218,346 236,336"/>
+  <polygon class="g-y2" points="238,330 258,340 256,345 236,336"/>
+</g>
+
+<g class="gallo__cuerpo">
+  <polygon class="g-a" points="210,190 270,176 300,206 290,238 262,256 206,252 176,226 172,204"/>
+  <polygon class="g-b" points="270,176 300,206 290,238 276,214"/>
+  <polygon class="g-d" points="206,252 262,256 240,270 214,266"/>
+  <polygon class="g-a" points="262,118 292,134 296,170 270,178 210,192 226,174 214,170 236,156 226,150 250,136 244,128"/>
+  <polygon class="g-b" points="292,134 296,170 284,174 280,140"/>
+  <polygon class="g-a" points="262,118 270,103 292,99 304,108 300,124 292,134"/>
+  <polygon class="g-b" points="292,99 304,108 300,124 290,116"/>
+  <polygon class="g-y" points="302,106 318,111 314,121 304,120"/>
+  <polygon class="g-y2" points="304,120 314,121 307,126"/>
+  <polygon class="g-r" points="276,101 281,92 286,99 291,92 294,100"/>
+  <polygon class="g-r" points="298,124 302,134 294,131"/>
+  <polygon class="g-e" points="286,108 292,107 290,111"/>
+</g>
+<g class="gallo__ala-plegada">
+  <polygon class="g-b" points="204,204 262,200 276,214 252,240 200,236 216,222"/>
+  <polygon class="g-a" points="200,236 252,240 230,248"/>
+</g>
+
+<g class="gallo__muslo">
+  <polygon class="g-a" points="244,244 268,246 270,272 252,282 240,266"/>
+</g>
+<g class="gallo__pata-parado">
+  <polygon class="g-y" points="254,278 264,278 262,336 252,336"/>
+  <polygon class="g-y" points="254,332 282,340 280,346 252,338"/>
+  <polygon class="g-y" points="254,334 266,350 262,353 250,338"/>
+  <polygon class="g-y" points="254,332 236,338 238,342 256,337"/>
+  <polygon class="g-y" points="253,304 236,312 253,314"/>
+</g>
+
+</svg><svg x="42" y="18" width="20" height="40" viewBox="8 2 27 61"><defs><linearGradient id="mini-metal" x1="0" x2="1"><stop offset="0" stop-color="#7d8692"/><stop offset=".45" stop-color="#d9dee4"/><stop offset="1" stop-color="#6c7480"/></linearGradient><linearGradient id="mini-acrilico" x1="0" x2="1"><stop offset="0" stop-color="#b87400"/><stop offset=".5" stop-color="#f2b705"/><stop offset="1" stop-color="#c98200"/></linearGradient></defs><path d="M16 42 C 16 26, 22 12, 34 3 C 28 14, 24 28, 24 42 Z" fill="url(#mini-acrilico)"/><path d="M15 40 h10 v4 h-10z" fill="#c5ccd4"/><path d="M13 44 h14 l4 17 q-12 3 -22 0z" fill="url(#mini-metal)"/></svg></svg>

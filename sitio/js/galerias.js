@@ -9,6 +9,8 @@
   /* ---------- Fotos del taller: fotos/taller/1.jpg, 2.jpg ... ---------- */
   const probar = (src) => new Promise((ok) => { const im = new Image(); im.onload = () => ok(src); im.onerror = () => ok(null); im.src = src; });
   async function buscarFotos(carpeta, max = 12) {
+    const nombre = carpeta.split("/").pop();
+    if (window.FOTOS) return window.FOTOS[nombre] || [];
     const lista = [];
     for (let n = 1; n <= max; n++) {
       let f = null;

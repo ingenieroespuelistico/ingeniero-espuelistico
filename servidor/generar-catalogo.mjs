@@ -8,9 +8,10 @@ const raiz = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sitio = join(raiz, "sitio");
 const html = readFileSync(join(sitio, "index.html"), "utf8");
 // Los productos que están en index.html (en su orden), y los archivos de precios y cálculo
-const scripts = [...html.matchAll(/<script src="(js\/[^"?]+)(?:\?[^"]*)?"><\/script>/g)].map((m) => m[1]);
-const necesarios = scripts.filter((s) => s.startsWith("js/productos/") || ["js/precios.js", "js/datos.js", "js/calculo.js"].includes(s));
-for (const f of ["js/precios.js", "js/datos.js", "js/calculo.js"]) if (!necesarios.includes(f)) throw new Error(`Falta ${f} en index.html`);
+const scripts = [...html.matchAll(/<script src="(js\/[^"?]+)(?:\?[^"]*)?"[^>]*><\/script>/g)].map((m) => m[1]);
+const BASE = ["js/precios.js", "js/datos.js", "js/calculo.js", "js/preguntas-datos.js"];
+const necesarios = scripts.filter((s) => s.startsWith("js/productos/") || BASE.includes(s));
+for (const f of BASE) if (!necesarios.includes(f)) throw new Error(`Falta ${f} en index.html`);
 
 const partes = necesarios.map((f) => `// ----- ${f} -----\n${readFileSync(join(sitio, f), "utf8")}`);
 const salida = `// ARCHIVO GENERADO por servidor/generar-catalogo.mjs — no lo edites; edita sitio/js/...
@@ -19,7 +20,7 @@ const window = {};
 ${partes.join("\n")}
 export const Tienda = {
   PRODUCTOS, PRECIOS, AJUSTE_EMPAQUE, CONTRAENTREGA_MINIMO, ENVIO_INTERNACIONAL_USD, ENVIO_NACIONAL,
-  NIVELES, PRESENTACIONES, REGALOS, PULGADAS, NEGOCIO, Calculo: window.Calculo,
+  NIVELES, PRESENTACIONES, REGALOS, PULGADAS, NEGOCIO, PREGUNTAS, Calculo: window.Calculo,
 };
 `;
 writeFileSync(join(raiz, "servidor", "catalogo.generado.js"), salida);

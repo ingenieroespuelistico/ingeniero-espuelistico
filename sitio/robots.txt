@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /gracias
+
+Sitemap: https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/sitemap.xml

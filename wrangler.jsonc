@@ -4,7 +4,7 @@
   "main": "servidor/index.js",
   "compatibility_date": "2026-10-01",
   // Antes de publicar, arma el catálogo del servidor con los mismos precios de la página (sitio/js/precios.js)
-  "build": { "command": "node servidor/generar-catalogo.mjs" },
+  "build": { "command": "node servidor/generar-catalogo.mjs && node servidor/generar-paginas.mjs" },
   // Límite de solicitudes por visitante para cotizar y pagar (evita abusos)
   "ratelimits": [
     { "name": "LIMITE", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } }

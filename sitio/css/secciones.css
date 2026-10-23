@@ -360,3 +360,59 @@ input, select, textarea { background-color: #fff; color: #142033; }
 .sello-pago { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 0; font-size: .82rem; color: var(--tinta-suave); text-align: center; }
 .sello-pago svg { width: 14px; height: 14px; color: var(--verde); flex: 0 0 auto; }
 .linea__peso { color: var(--tinta-suave); }
+
+/* ----- Portada: antetítulo con palabras clave ----- */
+.portada__texto > h1 { animation: none; margin: 0 0 .4em; }
+.portada__antetitulo { display: block; font-size: .95rem; font-weight: 700; font-stretch: 100%; letter-spacing: .04em; text-transform: uppercase; color: var(--azul); margin-bottom: 12px; line-height: 1.3; }
+.portada__texto .titular { display: block; }
+
+/* ----- Foto de la espuela mientras carga el 3D ----- */
+.visor__area { position: relative; }
+.visor__poster { position: absolute; inset: 0; margin: auto; max-width: min(78%, 420px); max-height: 88%; width: auto; height: auto; object-fit: contain; mix-blend-mode: multiply; transition: opacity .6s ease; }
+.tres-d .visor__poster { opacity: 0; pointer-events: none; }
+
+/* ----- Pie: créditos y lista de productos ----- */
+.pie__titulo { font-weight: 700; color: #fff; margin-bottom: 6px; }
+.pie__lista { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.pie__credito { border-top: 1px solid rgba(255,255,255,.14); margin-top: 24px; padding-top: 16px; font-size: .85rem; color: #B7C2D3; text-align: center; }
+.pie__credito strong { color: #fff; }
+
+/* ----- Accesibilidad: contraste y áreas táctiles ----- */
+.boton--verde-borde { color: #0F6B39; border-color: #0F6B39; }
+.bandera { padding: 3px; min-width: 36px; min-height: 26px; display: grid; place-items: center; }
+.banderas { gap: 4px; }
+
+/* ----- Página de producto ----- */
+.pagina-producto { background: var(--blanco); }
+.pp { padding: 20px 16px 56px; }
+.pp-nav { display: flex; gap: 18px; flex-wrap: wrap; }
+.pp-nav a { color: var(--tinta); font-weight: 600; text-decoration: none; }
+.pp-migas { font-size: .88rem; color: var(--tinta-suave); margin-bottom: 16px; }
+.pp-migas a { color: var(--azul); }
+.pp-rejilla { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.pp-galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.pp-galeria img { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; background: var(--papel); border-radius: 16px; }
+.pp-galeria img:first-child { grid-column: 1 / -1; }
+.pp-galeria--vacia { display: grid; place-items: center; min-height: 260px; background: var(--papel); border-radius: 16px; color: var(--tinta-suave); padding: 24px; text-align: center; }
+.pp-info h1 { font-size: clamp(1.9rem, 4vw, 2.8rem); }
+.pp-detalle { color: var(--tinta-suave); font-size: 1.1rem; }
+.pp-desde { font-size: 1.15rem; }
+.pp-desde strong { font-size: 1.8rem; font-stretch: 110%; }
+.pp-acciones { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.pp-confianza { font-size: .9rem; color: var(--tinta-suave); }
+.pp-seccion { margin-top: 40px; max-width: 820px; }
+.pp-datos { display: grid; gap: 8px; margin: 16px 0 0; }
+.pp-datos div { display: grid; grid-template-columns: 180px 1fr; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--linea); }
+.pp-datos dt { font-weight: 700; }
+.pp-datos dd { margin: 0; color: var(--tinta-suave); }
+.pp-tabla { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; }
+.pp-tabla caption { text-align: left; color: var(--tinta-suave); font-size: .9rem; padding-bottom: 8px; }
+.pp-tabla th, .pp-tabla td { padding: 10px 14px; border-bottom: 1px solid var(--linea); text-align: left; }
+.pp-tabla thead th { background: var(--azul-claro); }
+.pp-tabla th small { display: block; font-weight: 400; color: var(--tinta-suave); }
+.pp-nota { font-size: .9rem; color: var(--tinta-suave); }
+.pp-relacionados { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; list-style: none; padding: 0; }
+.pp-relacionados a { display: block; padding: 12px 14px; border: 1px solid var(--linea); border-radius: 12px; text-decoration: none; color: var(--tinta); font-weight: 600; background: #fff; }
+.pp-relacionados a:hover { border-color: var(--azul); color: var(--azul); }
+@media (max-width: 820px) { .pp-rejilla { grid-template-columns: 1fr; } .pp-datos div { grid-template-columns: 1fr; gap: 2px; } }
+.pp-seccion { padding: 0; }

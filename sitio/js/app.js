@@ -148,11 +148,14 @@
   const cacheFotos = {};
   const probar = (src) => new Promise((ok) => { const im = new Image(); im.onload = () => ok(src); im.onerror = () => ok(null); im.src = src; });
   async function buscarFoto(id, n) {
+    if (window.FOTOS) return (window.FOTOS[id] || [])[n - 1] || null;
     for (const e of EXTENSIONES) { const r = await probar(`fotos/${id}/${n}.${e}`); if (r) return r; }
     return null;
   }
   async function fotosDe(id) {
     if (cacheFotos[id]) return cacheFotos[id];
+    // Lista generada al publicar (js/fotos-lista.js): no hay que probar fotos que no existen
+    if (window.FOTOS) return (cacheFotos[id] = window.FOTOS[id] || []);
     const lista = [];
     for (let n = 1; n <= MAX_FOTOS; n++) { const f = await buscarFoto(id, n); if (!f) break; lista.push(f); }
     return (cacheFotos[id] = lista);
@@ -540,14 +543,45 @@
     window.open(enlaceWA(texto), "_blank", "noopener");
   });
 
+  /* ---------- Turnstile: comprobación anti-robots de Cloudflare (solo si está configurada en datos.js) ---------- */
+  let turnstileId = null, turnstileListo = null;
+  function prepararTurnstile() {
+    if (!NEGOCIO.turnstile || turnstileListo) return turnstileListo;
+    turnstileListo = new Promise((ok) => {
+      const s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      s.async = true;
+      s.onload = () => {
+        const caja = document.createElement("div");
+        caja.id = "verificacion-robot";
+        $("#boton-confirmar").before(caja);
+        turnstileId = window.turnstile.render(caja, { sitekey: NEGOCIO.turnstile, appearance: "interaction-only", size: "flexible", language: "es" });
+        ok();
+      };
+      s.onerror = () => ok();
+      document.head.appendChild(s);
+    });
+    return turnstileListo;
+  }
+  async function tokenTurnstile() {
+    if (!NEGOCIO.turnstile) return "";
+    await prepararTurnstile();
+    if (!window.turnstile || turnstileId === null) return "";
+    for (let i = 0; i < 40; i++) { const t = window.turnstile.getResponse(turnstileId); if (t) return t; await new Promise((r) => setTimeout(r, 250)); }
+    return "";
+  }
+  $$("#abrir-pedido, [data-abrir-carrito]").forEach((b) => b.addEventListener("click", () => setTimeout(prepararTurnstile, 0)));
+
   async function irAPagar(d, celular) {
     const boton = $("#boton-confirmar"), etiqueta = $("#boton-confirmar-texto"), error = $("#error-formulario");
     const textoAntes = etiqueta.textContent;
     boton.disabled = true; etiqueta.textContent = "Abriendo el pago seguro…";
     try {
+      const verificacion = await tokenTurnstile();
       const r = await fetch("/api/pedido", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          verificacion,
           pedido, pago: d.pago === "Contraentrega" ? "contraentrega" : "en_linea", acepto: $("#pedido-acepto").checked,
           cliente: { nombre: d.nombre, documento: d.documento, celular, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
         }),
@@ -559,6 +593,7 @@
       location.href = res.url;
     } catch (e) {
       error.textContent = e.message + " Si sigue fallando, escríbenos por WhatsApp.";
+      if (window.turnstile && turnstileId !== null) window.turnstile.reset(turnstileId);
       boton.disabled = false; etiqueta.textContent = textoAntes;
     }
   }
@@ -584,4 +619,11 @@
 
   // Para otros módulos (buscador, ayuda)
   window.IE = { abrirFicha, abrirPanel };
+
+  // Si llegan desde la página de un producto (?producto=id), se abre su ficha
+  try {
+    const desde = new URLSearchParams(location.search).get("producto");
+    if (desde && prod(desde)) setTimeout(() => abrirFicha(desde), 300);
+  } catch (e) {}
+
 })();

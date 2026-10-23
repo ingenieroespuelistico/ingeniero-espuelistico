@@ -9,7 +9,7 @@
 
 import { Tienda } from "./catalogo.generado.js";
 
-const VERSION = "2026-10-22.2";
+const VERSION = "2026-10-23.1";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -61,7 +61,7 @@ export default {
         const cuerpo = await leerJSON(request);
         if (!cuerpo) return error("Solicitud inválida");
         if (ruta === "/api/cotizar") return await cotizar(cuerpo, env, ctx);
-        return await crearPedido(cuerpo, url, env, ctx);
+        return await crearPedido(cuerpo, url, env, request);
       }
       if (ruta.startsWith("/api/")) return error("No encontrado", 404);
       return env.ASSETS.fetch(request);
@@ -194,7 +194,8 @@ function idPedido() {
   return `IE-${d}-${[...azar].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
-async function crearPedido(cuerpo, url, env) {
+async function crearPedido(cuerpo, url, env, request) {
+  if (!(await humanoVerificado(request, env, cuerpo.verificacion))) return error("No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.", 403);
   const lineas = lineasLimpias(cuerpo.pedido);
   if (!lineas) return error("El pedido no es válido. Recarga la página e intenta de nuevo.");
   const c = cuerpo.cliente || {};
@@ -353,24 +354,44 @@ async function telegram(env, mensaje) {
 
 /* ---------------- Estado del pago (página de gracias) ---------------- */
 async function estadoPago(url, env) {
-  const id = url.searchParams.get("pago") || "";
+  let id = url.searchParams.get("pago") || "";
   const ref = url.searchParams.get("pedido") || "";
+  const orden = url.searchParams.get("orden") || "";
+  // Si Mercado Pago no devolvió el número de pago, se busca en la orden
+  if (!/^\d{1,20}$/.test(id) && /^\d{1,20}$/.test(orden)) {
+    const r = await fetch(`https://api.mercadopago.com/merchant_orders/${orden}`, { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
+    const o = r.ok ? await r.json() : null;
+    const pagos = (o && o.payments) || [];
+    const elegido = pagos.find((x) => x.status === "approved") || pagos[pagos.length - 1];
+    if (elegido) id = String(elegido.id);
+  }
   if (!/^\d{1,20}$/.test(id)) return error("Pago no válido");
   const p = await consultarPago(id, env);
-  if (!p || p.external_reference !== ref) return error("No encontramos ese pago", 404);
+  if (!p) { console.log("estado: pago no encontrado", id); return error("No encontramos ese pago", 404); }
+  const propio = /^IE-\d{8}-[0-9A-F]{6}$/.test(p.external_reference || "");
+  if (!propio || (ref && ref !== p.external_reference)) { console.log("estado: referencia distinta", id, ref, p.external_reference); return error("No encontramos ese pago", 404); }
   return json({ ok: true, estado: p.status, pedido: p.external_reference, total: p.transaction_amount, medio: p.payment_method_id, contraentrega: (p.metadata || {}).tipo === "contraentrega" });
+}
+
+/* ---------------- Turnstile (protección contra robots) ---------------- */
+async function humanoVerificado(request, env, token) {
+  if (!env.TURNSTILE_SECRET) return true; // desactivado mientras no se configure
+  if (!token || typeof token !== "string" || token.length > 2048) return false;
+  const datos = new FormData();
+  datos.append("secret", env.TURNSTILE_SECRET);
+  datos.append("response", token);
+  const ip = request.headers.get("CF-Connecting-IP");
+  if (ip) datos.append("remoteip", ip);
+  const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: datos });
+  const d = await r.json().catch(() => ({}));
+  return Boolean(d.success);
 }
 
 /* ---------------- Salud ---------------- */
 async function salud(url, env) {
-  const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"];
+  const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TURNSTILE_SECRET"];
   const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
   if (url.searchParams.get("revisar") === "1") respuesta.conexiones = await revisarConexiones(env);
-  if (url.searchParams.get("ultimos") === "1" && url.searchParams.get("clave") === String(env.TELEGRAM_CHAT_ID)) {
-    const r = await fetch("https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&limit=3", { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
-    const d = await r.json().catch(() => null);
-    respuesta.ultimos = { estado: r.status, pagos: d && Array.isArray(d.results) ? d.results.map((p) => ({ id: p.id, status: p.status, ref: p.external_reference, medio: p.payment_method_id, fecha: p.date_created, live: p.live_mode })) : d };
-  }
   return json(respuesta);
 }
 

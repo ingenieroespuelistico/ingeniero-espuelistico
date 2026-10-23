@@ -1,3 +1,4 @@
 # Archivos de la carpeta sitio que NO se publican en internet (son solo instrucciones para ti)
 *.txt
 !robots.txt
+!llms.txt

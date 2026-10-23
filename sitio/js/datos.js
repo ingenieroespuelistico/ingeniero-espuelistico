@@ -8,6 +8,11 @@ const NEGOCIO = {
   facebook: "https://www.facebook.com/share/1Ff8Y8L43E/",
   contraentregaMinimo: CONTRAENTREGA_MINIMO,
   correo: "ingenieroespuelistico@gmail.com",
+  // Dirección pública de la página. Cuando compres el dominio, cámbiala aquí (por ejemplo "https://ingenieroespuelistico.com")
+  sitio: "https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev",
+  direccion: { calle: "Transversal 11 Sur # 13-65, casa 28", ciudad: "Ibagué", departamento: "Tolima", pais: "CO" },
+  // Clave pública de Cloudflare Turnstile (protección contra robots). Vacío = desactivado.
+  turnstile: "",
 };
 
 // Niveles de precio de espuelas: se calculan con el total de pares de espuela del pedido.
