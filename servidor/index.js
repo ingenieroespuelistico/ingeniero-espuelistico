@@ -366,6 +366,11 @@ async function salud(url, env) {
   const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"];
   const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
   if (url.searchParams.get("revisar") === "1") respuesta.conexiones = await revisarConexiones(env);
+  if (url.searchParams.get("ultimos") === "1" && url.searchParams.get("clave") === String(env.TELEGRAM_CHAT_ID)) {
+    const r = await fetch("https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&limit=3", { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
+    const d = await r.json().catch(() => null);
+    respuesta.ultimos = { estado: r.status, pagos: d && Array.isArray(d.results) ? d.results.map((p) => ({ id: p.id, status: p.status, ref: p.external_reference, medio: p.payment_method_id, fecha: p.date_created, live: p.live_mode })) : d };
+  }
   return json(respuesta);
 }
 
