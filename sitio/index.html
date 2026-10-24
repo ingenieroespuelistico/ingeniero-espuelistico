@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icono-180.png">
 <link rel="preload" href="fuentes/archivo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/estilos.css?v=13">
-<link rel="stylesheet" href="css/secciones.css?v=13">
+<link rel="stylesheet" href="css/secciones.css?v=14">
 <!-- seo:inicio -->
 <link rel="canonical" href="https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/">
 <meta property="og:type" content="website">
@@ -377,6 +377,19 @@
         <p class="formulario__error" id="agenda-error" role="alert"></p>
         <button class="boton boton--azul" type="submit">Agendar llamada</button>
         <p class="formulario__aviso" id="agenda-aviso">Por ahora la solicitud se envía por WhatsApp y te confirmamos la cita por ese medio.</p>
+        <div class="agenda__listo" id="agenda-listo" hidden role="alertdialog" aria-labelledby="agenda-listo-titulo" aria-describedby="agenda-listo-cuando">
+          <div class="agenda__listo-caja" id="agenda-listo-caja" tabindex="-1">
+            <div class="agenda__listo-icono" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6L20.1 8.4 18.7 7l-9.2 9.2Z"/></svg></div>
+            <h3 id="agenda-listo-titulo">¡Llamada agendada!</h3>
+            <p class="agenda__listo-cuando" id="agenda-listo-cuando"></p>
+            <p class="agenda__listo-detalle" id="agenda-listo-detalle"></p>
+            <div class="agenda__listo-botones">
+              <a class="boton boton--azul" id="agenda-listo-calendario" href="#" target="_blank" rel="noopener">Agregar a mi calendario</a>
+              <a class="boton boton--verde-borde" id="agenda-listo-wa" href="#" target="_blank" rel="noopener">¿Necesitas cambiarla? Escríbenos</a>
+            </div>
+            <button type="button" class="agenda__listo-cerrar" id="agenda-listo-cerrar">Listo, cerrar</button>
+          </div>
+        </div>
       </form>
     </div>
   </section>
@@ -608,7 +621,7 @@
 <script src="js/app.js?v=13" defer></script>
 <script src="js/galerias.js?v=13" defer></script>
 <script src="js/menu.js?v=13" defer></script>
-<script src="js/agenda.js?v=13" defer></script>
+<script src="js/agenda.js?v=14" defer></script>
 <script src="js/cursor.js?v=13" defer></script>
 <script src="js/sinonimos.js?v=13" defer></script>
 <script src="js/buscador.js?v=13" defer></script>

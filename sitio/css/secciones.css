@@ -449,3 +449,20 @@ input, select, textarea { background-color: #fff; color: #142033; }
 .guia .pp-seccion ol, .guia .pp-seccion ul:not(.pp-relacionados) { padding-left: 22px; display: grid; gap: 6px; }
 .pp-tabla--comparar td, .pp-tabla--comparar th { font-size: .92rem; }
 @media (max-width: 600px) { .pp-tabla-caja:has(.pp-tabla--ancha)::before { content: "Desliza la tabla para ver todas las columnas →"; display: block; font-size: .8rem; color: var(--tinta-suave); margin-bottom: 4px; } }
+
+/* ----- Agenda: aviso grande de cita agendada (tapa el formulario) ----- */
+.agenda__formulario { position: relative; }
+.agenda__listo { position: absolute; inset: 0; z-index: 5; display: grid; align-content: center; justify-items: center; padding: 24px; background: rgba(255,255,255,.97); border-radius: inherit; animation: listo-aparece .35s ease-out; }
+.agenda__listo[hidden] { display: none; }
+.agenda__listo-caja { display: grid; justify-items: center; gap: 12px; text-align: center; max-width: 440px; outline: none; }
+.agenda__listo-icono { width: 88px; height: 88px; border-radius: 50%; background: var(--verde); color: #fff; display: grid; place-items: center; box-shadow: 0 12px 30px rgba(22,138,78,.35); animation: listo-icono .5s cubic-bezier(.2,1.4,.4,1); }
+.agenda__listo-icono svg { width: 52px; height: 52px; }
+.agenda__listo h3 { margin: 4px 0 0; font-size: clamp(1.7rem, 5vw, 2.2rem); color: var(--tinta); }
+.agenda__listo-cuando { margin: 0; font-size: 1.2rem; font-weight: 800; color: var(--verde); }
+.agenda__listo-detalle { margin: 0; color: var(--tinta-suave); }
+.agenda__listo-botones { display: grid; gap: 10px; width: 100%; margin-top: 6px; }
+.agenda__listo-botones .boton { width: 100%; justify-content: center; }
+.agenda__listo-cerrar { border: 0; background: none; color: var(--tinta-suave); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 8px; }
+@keyframes listo-aparece { from { opacity: 0; } to { opacity: 1; } }
+@keyframes listo-icono { from { transform: scale(.4); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .agenda__listo, .agenda__listo-icono { animation: none; } }

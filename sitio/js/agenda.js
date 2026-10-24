@@ -93,6 +93,28 @@
     obs.observe(seccion);
   } else consultarCalendario();
 
+  // Aviso grande que tapa el formulario cuando la cita queda agendada
+  const listo = $("#agenda-listo");
+  let cierreListo = null;
+  function mostrarListo({ nombre, cuando, celular, ini, fin }) {
+    if (!listo) return;
+    const utc = (ms) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    const marca = typeof NEGOCIO !== "undefined" ? NEGOCIO.marca : "Ingeniero Espuelístico";
+    const wa = typeof NEGOCIO !== "undefined" ? NEGOCIO.whatsapp : "573019580737";
+    $("#agenda-listo-cuando").textContent = `${mayus(cuando)} (hora de Colombia)`;
+    $("#agenda-listo-detalle").textContent = `${nombre.split(" ")[0]}, te llamaremos al ${celular}. También quedó en nuestro calendario, así que no tienes que confirmar nada más.`;
+    $("#agenda-listo-calendario").href = `https://calendar.google.com/calendar/render?${new URLSearchParams({ action: "TEMPLATE", text: `Llamada con ${marca}`, dates: `${utc(ini)}/${utc(fin)}`, details: `${marca} te llamará al ${celular}. WhatsApp: +${wa}` })}`;
+    $("#agenda-listo-wa").href = `https://wa.me/${wa}?text=${encodeURIComponent(`Hola, soy ${nombre}. Agendé una llamada para el ${cuando} y necesito cambiarla.`)}`;
+    listo.hidden = false;
+    const caja = $("#agenda-listo-caja");
+    caja.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    caja.focus({ preventScroll: true });
+    clearTimeout(cierreListo);
+    cierreListo = setTimeout(cerrarListo, 45000);
+  }
+  function cerrarListo() { clearTimeout(cierreListo); if (listo) listo.hidden = true; }
+  if (listo) $("#agenda-listo-cerrar").addEventListener("click", cerrarListo);
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const error = $("#agenda-error");
@@ -139,10 +161,13 @@
         return;
       }
       if (!res.ok) throw new Error(res.error || "No pudimos agendar");
-      const cambiar = `https://wa.me/${NEGOCIO.whatsapp}?text=${encodeURIComponent(`Hola, soy ${nombre}. Agendé una llamada para el ${cuando} y necesito cambiarla.`)}`;
-      const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-      $("#agenda-aviso").innerHTML = `✅ <strong>¡Listo! Te llamamos el ${esc(cuando)} (hora de Colombia)</strong> al ${esc(cel.numeroE164)}. Si necesitas cambiarla, <a href="${cambiar}" target="_blank" rel="noopener">escríbenos por WhatsApp</a>.`;
-      calendario.ocupado.push({ inicio: new Date(C.instanteColombia(ymd(dia), hora)).toISOString(), fin: new Date(C.instanteColombia(ymd(dia), hora + AGENDA.duracionMinutos)).toISOString() });
+      const ini = C.instanteColombia(ymd(dia), hora), fin = ini + AGENDA.duracionMinutos * 60000;
+      calendario.ocupado.push({ inicio: new Date(ini).toISOString(), fin: new Date(fin).toISOString() });
+      mostrarListo({ nombre, cuando, celular: cel.numeroE164, ini, fin });
+      // El formulario queda limpio para otra persona u otra cita
+      form.reset();
+      $("#agenda-pais").dispatchEvent(new Event("change", { bubbles: true }));
+      error.textContent = "";
       pintarDias();
     } catch (err) {
       error.textContent = `${err.message}. Te dejamos el mensaje listo por WhatsApp.`;

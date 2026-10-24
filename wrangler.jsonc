@@ -28,7 +28,7 @@
   // PAYPAL_MODO: "sandbox" mientras se prueba con claves de prueba; "live" con las claves reales
   "vars": {
     "TELEGRAM_CHAT_ID": "8408950717",
-    "PAYPAL_MODO": "sandbox"
+    "PAYPAL_MODO": "live"
   },
   "observability": { "enabled": true }
 }
