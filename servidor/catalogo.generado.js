@@ -259,7 +259,7 @@ const ENVIO_INTERNACIONAL_USD = { base: 25, porMedioKiloExtra: 6, ecuador: "USD 
 // Los precios en pesos se pasan a dólares con la tasa del día.
 // recargoPorcentaje: porcentaje que se suma al precio en dólares para cubrir la comisión de PayPal y el cambio
 // de moneda (por ejemplo 5). 0 = no se suma nada.
-const PAYPAL = { activo: false, recargoPorcentaje: 0 };
+const PAYPAL = { activo: true, recargoPorcentaje: 0 };
 
 /* ---------- ENVÍO EN COLOMBIA (cotización automática con Envia) ---------- */
 // Siempre se cotiza con UNA transportadora (la del convenio de pago en casa). Si el cliente elige contraentrega,

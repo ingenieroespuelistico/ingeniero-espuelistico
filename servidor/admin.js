@@ -66,6 +66,7 @@ export async function atenderAdmin(request, url, env, h) {
     const pqrs = await listarPQR(env);
     return h.json({ ok: true, etapas: ETAPAS, pedidos: await resumenes(env), hoy: ahoraISO(), pqrAbiertas: pqrs.filter((q) => q.e === "recibida" || q.e === "en_tramite").length });
   }
+  if (get && ruta === "conexiones") return h.json({ ok: true, conexiones: await h.diagnostico(env) });
   if (get && ruta === "pqrs") return h.json({ ok: true, tipos: TIPOS_PQR, estados: ESTADOS_PQR, pqrs: await listarPQR(env) });
   if (get && ruta === "pqr") {
     const q = await leerPQR(env, url.searchParams.get("r"));

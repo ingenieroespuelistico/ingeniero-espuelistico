@@ -17,13 +17,13 @@
 
 import { Tienda } from "./catalogo.generado.js";
 import { registrarPedidoWeb, registrarPago, revisarAbandonados, leerPedido } from "./pedidos.js";
-import { paypalListo, crearOrden, capturarOrden, consultarOrden, ESTADO_PAYPAL } from "./paypal.js";
+import { paypalListo, crearOrden, capturarOrden, consultarOrden, ESTADO_PAYPAL, probarPaypal } from "./paypal.js";
 import { atenderAdmin, resumenDiario } from "./admin.js";
 import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario.js";
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-23.10";
+const VERSION = "2026-10-23.11";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -112,7 +112,7 @@ export default {
       }
       if (ruta.startsWith("/api/admin/")) {
         if (!(await dentroDelLimite(request, env, "/api/admin"))) return error("Demasiadas solicitudes. Espera un minuto.", 429);
-        return await atenderAdmin(request, url, env, { json, error, leerJSON, mismoOrigen, telegram, idPedido, CABECERAS });
+        return await atenderAdmin(request, url, env, { json, error, leerJSON, mismoOrigen, telegram, idPedido, CABECERAS, diagnostico });
       }
       if (ruta.startsWith("/api/")) return error("No encontrado", 404);
       return env.ASSETS.fetch(request);
@@ -700,6 +700,28 @@ async function salud(url, env) {
   const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, base: Boolean(env.PEDIDOS), secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
   if (url.searchParams.get("revisar") === "1") respuesta.conexiones = await revisarConexiones(env);
   return json(respuesta);
+}
+
+// Revisión completa de conexiones (botón en la app de pedidos)
+async function diagnostico(env) {
+  const probar = async (fn) => { try { return await fn(); } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160) }; } };
+  const [base, paypal, google] = await Promise.all([
+    revisarConexiones(env),
+    probar(() => probarPaypal(env)),
+    probar(async () => {
+      if (!cuentaServicio(env)) return { ok: false, error: "Falta GOOGLE_CUENTA_SERVICIO" };
+      const ahora = new Date();
+      const lista = await ocupado(env, calendarioId(env, Tienda.NEGOCIO.correo), ahora.toISOString(), new Date(ahora.getTime() + 7 * 86400000).toISOString());
+      return { ok: true, calendario: calendarioId(env, Tienda.NEGOCIO.correo), ocupadosEstaSemana: lista.length };
+    }),
+  ]);
+  return {
+    ...base, paypal, googleCalendar: google,
+    vozIA: env.AI ? { ok: true } : { ok: false, error: "Falta el enlace AI" },
+    correo: env.RESEND_API_KEY && env.CORREO_REMITENTE ? { ok: true } : { ok: false, error: "Sin configurar (requiere dominio)" },
+    turnstile: env.TURNSTILE_SECRET && Tienda.NEGOCIO.turnstile ? { ok: true } : { ok: false, error: "Desactivado" },
+    version: VERSION,
+  };
 }
 
 async function revisarConexiones(env) {

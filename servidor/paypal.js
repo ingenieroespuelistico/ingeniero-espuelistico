@@ -74,6 +74,14 @@ export async function crearOrden(env, { id, lineas, envioCentavos, cliente, orig
   return enlace ? { orden: r.d.id, url: enlace.href, totalCentavos: total } : null;
 }
 
+// Prueba de conexión (para la app de pedidos): pide un token y dice en qué modo está
+export async function probarPaypal(env) {
+  if (!paypalListo(env)) return { ok: false, error: "Faltan PAYPAL_CLIENT_ID o PAYPAL_SECRET" };
+  tokenGuardado = null;
+  await token(env);
+  return { ok: true, modo: baseApi(env).includes("sandbox") ? "sandbox (pruebas)" : "live (real)" };
+}
+
 export const consultarOrden = (env, orden) => llamar(env, "GET", `/v2/checkout/orders/${orden}`);
 
 // Cobra una orden aprobada. Devuelve { ok, orden, captura, estado, pedido, monto } o { ok:false }

@@ -124,7 +124,19 @@
       <section class="tarjeta"><h2>📦 Por despachar</h2>${listaPedidos(porDespachar, "Nada pendiente por despachar.")}</section>
       ${despachados.length ? `<section class="tarjeta"><h2>🚚 Despachados</h2>${listaPedidos(despachados.slice(0, 15), "")}</section>` : ""}
       ${carritos.length ? `<section class="tarjeta"><h2>🛒 Sin pagar (últimos 3 días)</h2>${listaPedidos(carritos.slice(0, 15), "")}</section>` : ""}
+      <section class="tarjeta"><h2>Conexiones</h2><div id="conexiones"><button class="btn btn--borde btn--ancho" id="revisar-conexiones">Revisar conexiones (pagos, envíos, calendario…)</button></div></section>
     `);
+    $("#revisar-conexiones").onclick = revisarConexiones;
+  }
+  const NOMBRES_CONEXION = { mercadoPago: "Mercado Pago", paypal: "PayPal", envia: "Envia (cotizaciones)", telegram: "Telegram (avisos)", googleCalendar: "Google Calendar (agenda)", vozIA: "Notas de voz (IA)", turnstile: "Turnstile (anti-robots)", correo: "Correo al cliente" };
+  async function revisarConexiones() {
+    const caja = $("#conexiones");
+    caja.innerHTML = `<p class="vacio">Revisando…</p>`;
+    try {
+      const c = (await api("conexiones")).conexiones;
+      const extra = (k, x) => k === "mercadoPago" && x.ok ? (x.cuentaDePrueba ? " · cuenta de PRUEBA" : " · cuenta real") : k === "paypal" && x.ok ? ` · ${x.modo}` : k === "googleCalendar" && x.ok ? ` · ${x.calendario}` : k === "telegram" && x.ok && x.bot ? ` · @${x.bot}` : "";
+      caja.innerHTML = `<ul class="linea-tiempo">${Object.keys(NOMBRES_CONEXION).filter((k) => c[k]).map((k) => `<li>${c[k].ok ? "✅" : "❌"} <b>${esc(NOMBRES_CONEXION[k])}</b>${esc(extra(k, c[k]))}${!c[k].ok && (c[k].error || c[k].estado) ? `<small>${esc(c[k].error || "Error " + c[k].estado)}</small>` : ""}</li>`).join("")}</ul><p class="ayuda">Versión del servidor: ${esc(c.version)}</p>`;
+    } catch (e) { caja.innerHTML = `<p class="vacio">${esc(e.message)}</p>`; }
   }
 
   /* ---------- Pedidos ---------- */
