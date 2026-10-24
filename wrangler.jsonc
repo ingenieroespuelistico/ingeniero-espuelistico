@@ -16,14 +16,17 @@
     // Solo las direcciones /api/... pasan por el servidor; todo lo demás se sirve directo (gratis e ilimitado)
     "run_worker_first": ["/api/*"]
   },
-  // No borrar las variables que se agreguen en el panel de Cloudflare al publicar desde GitHub
+  // Base de pedidos y clientes (espacio KV "ie_pedidos")
   "kv_namespaces": [{ "binding": "PEDIDOS", "id": "f0afa9fa377c4c6fae242f1f57aac709" }],
   // Tarea programada: revisa carritos sin pagar cada 20 minutos
   "triggers": { "crons": ["*/20 * * * *"] },
+  // No borrar las variables que se agreguen en el panel de Cloudflare al publicar desde GitHub
   "keep_vars": true,
   // Datos NO secretos (los tokens van como "Secret" en el panel de Cloudflare, nunca aquí)
+  // PAYPAL_MODO: "sandbox" mientras se prueba con claves de prueba; "live" con las claves reales
   "vars": {
-    "TELEGRAM_CHAT_ID": "8408950717"
+    "TELEGRAM_CHAT_ID": "8408950717",
+    "PAYPAL_MODO": "sandbox"
   },
   "observability": { "enabled": true }
 }
