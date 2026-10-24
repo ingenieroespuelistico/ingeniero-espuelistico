@@ -80,18 +80,18 @@ const PIXEL_TIKTOK = "DBDV8JBC77U4J2JQC9OG"; // TikTok Ads Manager → Herramien
   function mostrarAviso() {
     if (aviso) { aviso.hidden = false; return; }
     aviso = document.createElement("div");
-    aviso.className = "aviso-cookies";
+    aviso.className = "aviso-medicion";
     aviso.setAttribute("role", "dialog");
     aviso.setAttribute("aria-live", "polite");
-    aviso.setAttribute("aria-label", "Aviso de cookies");
+    aviso.setAttribute("aria-label", "Aviso de medición y privacidad");
     aviso.innerHTML = `
       <p><strong>¿Nos permites medir tu visita?</strong> Usamos ${PIXEL_TIKTOK ? "los píxeles de Meta (Facebook) y TikTok" : "el Pixel de Meta (Facebook)"} para saber qué anuncios te trajeron y mostrar
       publicidad útil. Tu pedido funciona igual si dices que no. <a href="privacidad.html#cookies">Más información sobre cookies</a></p>
-      <div class="aviso-cookies__botones">
-        <button type="button" class="boton aviso-cookies__no" data-cookies="no">No, gracias</button>
-        <button type="button" class="boton boton--azul" data-cookies="si">Aceptar</button>
+      <div class="aviso-medicion__botones">
+        <button type="button" class="boton aviso-medicion__no" data-eleccion="no">No, gracias</button>
+        <button type="button" class="boton boton--azul" data-eleccion="si">Aceptar</button>
       </div>`;
-    aviso.addEventListener("click", (e) => { const b = e.target.closest("[data-cookies]"); if (b) guardar(b.dataset.cookies); });
+    aviso.addEventListener("click", (e) => { const b = e.target.closest("[data-eleccion]"); if (b) guardar(b.dataset.eleccion); });
     document.body.appendChild(aviso);
   }
   function cerrarAviso() { if (aviso) aviso.hidden = true; }

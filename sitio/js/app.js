@@ -342,7 +342,7 @@
   /* ---------- Panel del pedido ---------- */
   const panel = $("#panel-pedido");
   let ultimoFoco = null;
-  function abrirPanel() { ultimoFoco = document.activeElement; panel.hidden = false; pintarPedido(); $(".panel__cerrar").focus(); document.body.style.overflow = "hidden"; }
+  function abrirPanel() { ultimoFoco = document.activeElement; panel.hidden = false; pintarPedido(); $(".panel__cerrar").focus(); document.body.style.overflow = "hidden"; document.dispatchEvent(new Event("ie:panel-abierto")); }
   function cerrarPanel() { panel.hidden = true; document.body.style.overflow = ""; if (ultimoFoco) ultimoFoco.focus(); }
   $$("#abrir-pedido, [data-abrir-carrito]").forEach((b) => b.addEventListener("click", abrirPanel));
   $$("[data-seguir-comprando]").forEach((b) => b.addEventListener("click", () => { cerrarPanel(); document.getElementById("catalogo").scrollIntoView({ behavior: "smooth" }); }));
@@ -544,7 +544,9 @@
   });
 
   /* ---------- Turnstile: comprobación anti-robots de Cloudflare (solo si está configurada en datos.js) ---------- */
-  let turnstileId = null, turnstileListo = null;
+  // Se prepara apenas se abre el pedido (por cualquier botón), se ve como una cajita "Verificando… / Éxito"
+  // y, si falla, el cliente ve un mensaje claro.
+  let turnstileId = null, turnstileListo = null, turnstileError = "";
   function prepararTurnstile() {
     if (!NEGOCIO.turnstile || turnstileListo) return turnstileListo;
     turnstileListo = new Promise((ok) => {
@@ -555,30 +557,42 @@
         const caja = document.createElement("div");
         caja.id = "verificacion-robot";
         $("#boton-confirmar").before(caja);
-        turnstileId = window.turnstile.render(caja, { sitekey: NEGOCIO.turnstile, appearance: "interaction-only", size: "flexible", language: "es" });
+        turnstileId = window.turnstile.render(caja, {
+          sitekey: NEGOCIO.turnstile, appearance: "always", size: "flexible", language: "es",
+          callback: () => { turnstileError = ""; },
+          "error-callback": (codigo) => { turnstileError = String(codigo || "error"); console.warn("Turnstile", codigo); },
+          "expired-callback": () => window.turnstile.reset(turnstileId),
+        });
         ok();
       };
-      s.onerror = () => ok();
+      s.onerror = () => { turnstileError = "no-cargo"; ok(); };
       document.head.appendChild(s);
     });
     return turnstileListo;
   }
-  async function tokenTurnstile() {
+  document.addEventListener("ie:panel-abierto", () => setTimeout(prepararTurnstile, 0));
+  async function tokenTurnstile(etiqueta) {
     if (!NEGOCIO.turnstile) return "";
     await prepararTurnstile();
-    if (!window.turnstile || turnstileId === null) return "";
-    for (let i = 0; i < 24; i++) { const t = window.turnstile.getResponse(turnstileId); if (t) return t; await new Promise((r) => setTimeout(r, 250)); }
-    // Si Cloudflare pidió marcar la casilla, se le avisa al cliente en vez de enviar sin verificación
-    throw new Error("Marca la casilla «Verifique que es un ser humano» que aparece arriba del botón y vuelve a confirmar.");
+    if (turnstileError === "no-cargo" || !window.turnstile || turnstileId === null)
+      throw new Error("No cargó la verificación de seguridad (puede ser un bloqueador de anuncios). Desactívalo para esta página o escríbenos por WhatsApp.");
+    etiqueta.textContent = "Verificando que no eres un robot…";
+    for (let i = 0; i < 80; i++) {
+      const t = window.turnstile.getResponse(turnstileId);
+      if (t) return t;
+      if (turnstileError) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    throw new Error("No pudimos completar la verificación de seguridad. Si ves la casilla arriba del botón, márcala; si no, recarga la página.");
   }
-  $$("#abrir-pedido, [data-abrir-carrito]").forEach((b) => b.addEventListener("click", () => setTimeout(prepararTurnstile, 0)));
 
   async function irAPagar(d, celular) {
     const boton = $("#boton-confirmar"), etiqueta = $("#boton-confirmar-texto"), error = $("#error-formulario");
     const textoAntes = etiqueta.textContent;
     boton.disabled = true; etiqueta.textContent = "Abriendo el pago seguro…";
     try {
-      const verificacion = await tokenTurnstile();
+      const verificacion = await tokenTurnstile(etiqueta);
+      etiqueta.textContent = "Abriendo el pago seguro…";
       const r = await fetch("/api/pedido", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -594,7 +608,7 @@
       location.href = res.url;
     } catch (e) {
       error.textContent = e.message + " Si sigue fallando, escríbenos por WhatsApp.";
-      if (window.turnstile && turnstileId !== null && !/Marca la casilla/.test(e.message)) window.turnstile.reset(turnstileId);
+      if (window.turnstile && turnstileId !== null && turnstileError) { turnstileError = ""; window.turnstile.reset(turnstileId); }
       boton.disabled = false; etiqueta.textContent = textoAntes;
     }
   }
