@@ -18,6 +18,26 @@ const NEGOCIO = {
   paisesSinEnvio: { US: "Estados Unidos", PR: "Puerto Rico", GU: "Guam", VI: "Islas Vírgenes de EE. UU.", AS: "Samoa Americana", MP: "Islas Marianas del Norte", UM: "Islas menores de EE. UU.", CA: "Canadá" },
 };
 
+// Agenda de llamadas (hora de Colombia). Domingos y festivos no se agenda.
+// Si conectas Google Calendar, cada llamada ocupa "duracionMinutos" en tu calendario y las horas ocupadas no se ofrecen.
+const AGENDA = {
+  duracionMinutos: 15,              // cada llamada (también es el intervalo entre horas disponibles)
+  anticipacionMinutos: 60,          // no se puede agendar para dentro de menos tiempo que esto
+  diasAMostrar: 10,
+  lunesAViernes: ["08:00", "15:00"],
+  sabado: ["08:00", "14:00"],
+  descanso: ["12:00", "13:30"],     // no se agenda en este rato
+  // Festivos de Colombia (actualizar cada año)
+  festivos: [
+    "2026-01-01", "2026-01-12", "2026-03-23", "2026-04-02", "2026-04-03", "2026-05-01", "2026-05-18", "2026-06-08",
+    "2026-06-15", "2026-06-29", "2026-07-13", "2026-07-20", "2026-08-07", "2026-08-17", "2026-10-12", "2026-11-02",
+    "2026-11-16", "2026-12-08", "2026-12-25",
+    "2027-01-01", "2027-01-11", "2027-03-22", "2027-03-25", "2027-03-26", "2027-05-01", "2027-05-10", "2027-05-31",
+    "2027-06-07", "2027-07-05", "2027-07-12", "2027-07-20", "2027-08-07", "2027-08-16", "2027-10-18", "2027-11-01",
+    "2027-11-15", "2027-12-08", "2027-12-25",
+  ],
+};
+
 // Niveles de precio de espuelas: se calculan con el total de pares de espuela del pedido.
 const NIVELES = [
   { id: "minorista", nombre: "Minorista", desde: 1 },

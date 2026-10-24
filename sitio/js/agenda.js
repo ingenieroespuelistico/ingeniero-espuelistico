@@ -1,31 +1,17 @@
 // Agenda de llamadas: el cliente elige día y hora dentro del horario de atención (hora de Colombia).
-// Por ahora la solicitud sale por WhatsApp. Más adelante se podrá crear el evento en Google Calendar desde el servidor (Cloudflare).
+// Horario, duración y festivos: AGENDA en js/datos.js.
+// Si Google Calendar está conectado en el servidor, las horas ocupadas no se ofrecen y la cita queda en el calendario.
+// Si no, la solicitud sale por WhatsApp como antes.
 (() => {
   "use strict";
   const $ = (s, el = document) => el.querySelector(s);
-  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const form = $("#formulario-agenda");
-  if (!form) return;
+  if (!form || typeof AGENDA === "undefined") return;
+  const C = window.Calculo;
 
-  // Festivos de Colombia (actualizar cada año). Domingos y festivos no se agenda.
-  const FESTIVOS = new Set([
-    "2026-01-01", "2026-01-12", "2026-03-23", "2026-04-02", "2026-04-03", "2026-05-01", "2026-05-18", "2026-06-08",
-    "2026-06-15", "2026-06-29", "2026-07-13", "2026-07-20", "2026-08-07", "2026-08-17", "2026-10-12", "2026-11-02",
-    "2026-11-16", "2026-12-08", "2026-12-25",
-    "2027-01-01", "2027-01-11", "2027-03-22", "2027-03-25", "2027-03-26", "2027-05-01", "2027-05-10", "2027-05-31",
-    "2027-06-07", "2027-07-05", "2027-07-12", "2027-07-20", "2027-08-07", "2027-08-16", "2027-10-18", "2027-11-01",
-    "2027-11-15", "2027-12-08", "2027-12-25",
-  ]);
-  const DIAS_A_MOSTRAR = 10, INTERVALO_MIN = 5, ANTICIPACION_MIN = 60;
-  // Horario de llamadas (minutos desde medianoche): de 8:00 a.m. a 3:00 p.m. (sábados hasta las 2:00 p.m.),
-  // con descanso de 12:00 m. a 1:30 p.m.
-  const DESCANSO = [12 * 60, 13 * 60 + 30];
-
-  // Fechas en hora de Colombia (UTC−5, sin horario de verano)
-  const OFFSET = -5 * 60;
+  const OFFSET = -5 * 60; // Colombia, sin horario de verano
   const ahoraColombia = () => new Date(Date.now() + (OFFSET + new Date().getTimezoneOffset()) * 60000);
   const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const horario = (d) => { const w = d.getDay(); return w === 0 ? null : w === 6 ? [8 * 60, 14 * 60] : [8 * 60, 15 * 60]; };
   const nombreDia = new Intl.DateTimeFormat("es-CO", { weekday: "short", day: "numeric", month: "short" });
   const fechaLarga = new Intl.DateTimeFormat("es-CO", { weekday: "long", day: "numeric", month: "long" });
   const mayus = (t) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -43,31 +29,42 @@
       `<label class="chip"><input type="checkbox" name="productos" value="${p.nombre}"><span>${p.nombre}</span></label>`).join("");
   }
 
-  // Días disponibles
-  const dias = [];
-  for (let d = ahoraColombia(), n = 0; dias.length < DIAS_A_MOSTRAR && n < 30; n++) {
-    const dia = new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-    if (horario(dia) && !FESTIVOS.has(ymd(dia)) && horasDe(dia).length) dias.push(dia);
-  }
+  // Horas ocupadas en Google Calendar (si está conectado)
+  let calendario = { activo: false, ocupado: [] };
+  const libre = (dia, m) => {
+    const ini = C.instanteColombia(ymd(dia), m), fin = ini + AGENDA.duracionMinutos * 60000;
+    return !calendario.ocupado.some((o) => ini < Date.parse(o.fin) && fin > Date.parse(o.inicio));
+  };
   function horasDe(dia) {
-    const h = horario(dia); if (!h) return [];
     const ahora = ahoraColombia(), hoy = ymd(ahora) === ymd(dia);
-    const minimo = hoy ? ahora.getHours() * 60 + ahora.getMinutes() + ANTICIPACION_MIN : 0;
-    const lista = [];
-    for (let m = h[0]; m <= h[1] - INTERVALO_MIN; m += INTERVALO_MIN) if (m >= minimo && !(m >= DESCANSO[0] && m < DESCANSO[1])) lista.push(m);
-    return lista;
+    const minimo = hoy ? ahora.getHours() * 60 + ahora.getMinutes() + AGENDA.anticipacionMinutos : 0;
+    return C.horasAgenda(ymd(dia)).filter((m) => m >= minimo && libre(dia, m));
   }
-  $("#agenda-dias").innerHTML = dias.map((d, i) =>
-    `<label class="chip"><input type="radio" name="dia" value="${ymd(d)}" ${i === 0 ? "checked" : ""}><span>${mayus(nombreDia.format(d))}</span></label>`).join("");
 
+  let dias = [];
+  function pintarDias() {
+    const elegido = new FormData(form).get("dia");
+    dias = [];
+    const hoy = ahoraColombia();
+    for (let n = 0; dias.length < AGENDA.diasAMostrar && n < 30; n++) {
+      const dia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + n);
+      if (horasDe(dia).length) dias.push(dia);
+    }
+    const marcar = dias.some((d) => ymd(d) === elegido) ? elegido : dias[0] && ymd(dias[0]);
+    $("#agenda-dias").innerHTML = dias.map((d) =>
+      `<label class="chip"><input type="radio" name="dia" value="${ymd(d)}" ${ymd(d) === marcar ? "checked" : ""}><span>${mayus(nombreDia.format(d))}</span></label>`).join("");
+    pintarHoras();
+  }
   function pintarHoras() {
     const v = new FormData(form).get("dia");
+    const previa = $("#agenda-hora").value;
     const dia = dias.find((d) => ymd(d) === v) || dias[0];
     const horas = dia ? horasDe(dia) : [];
     const grupo = (titulo, lista) => lista.length ? `<optgroup label="${titulo}">${lista.map((m) => `<option value="${m}">${hhmm(m)}</option>`).join("")}</optgroup>` : "";
     $("#agenda-hora").innerHTML = horas.length
       ? `<option value="">Elige la hora</option>` + grupo("Mañana", horas.filter((m) => m < 12 * 60)) + grupo("Tarde", horas.filter((m) => m >= 12 * 60))
       : `<option value="">No hay horas disponibles este día</option>`;
+    if (previa && horas.includes(Number(previa))) $("#agenda-hora").value = previa;
     pintarHoraLocal();
   }
   // Si el visitante no está en Colombia, mostramos la equivalencia en su hora
@@ -76,9 +73,27 @@
     $("#agenda-hora-local").textContent = difMin ? `(hora de Colombia; en tu zona son ${difMin > 0 ? "+" : "−"}${Math.abs(difMin / 60)} h)` : "(hora de Colombia)";
   }
   $("#agenda-dias").addEventListener("change", pintarHoras);
-  pintarHoras();
+  pintarDias();
 
-  form.addEventListener("submit", (e) => {
+  async function consultarCalendario() {
+    try {
+      const r = await fetch("/api/agenda", { cache: "no-store" });
+      const d = await r.json();
+      if (d && d.ok && d.activo) {
+        calendario = { activo: true, ocupado: Array.isArray(d.ocupado) ? d.ocupado : [] };
+        $("#agenda-aviso").textContent = "La cita queda apartada en nuestro calendario y te llamamos a esa hora.";
+        pintarDias();
+      }
+    } catch (e) { /* sin calendario: se agenda por WhatsApp */ }
+  }
+  // Se consulta cuando el cliente llega a la agenda (no al abrir la página)
+  const seccion = document.getElementById("agendar");
+  if (seccion && "IntersectionObserver" in window) {
+    const obs = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) { obs.disconnect(); consultarCalendario(); } }, { rootMargin: "300px" });
+    obs.observe(seccion);
+  } else consultarCalendario();
+
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const error = $("#agenda-error");
     const d = new FormData(form);
@@ -91,20 +106,49 @@
     if (!d.get("acepto")) { error.textContent = "Para agendar, autoriza el tratamiento de tus datos."; $("#agenda-acepto").focus(); return; }
     error.textContent = "";
     const dia = dias.find((x) => ymd(x) === d.get("dia"));
+    const hora = Number(d.get("hora"));
     const productos = d.getAll("productos");
+    const cuando = `${fechaLarga.format(dia)} a las ${hhmm(hora)}`;
     const texto = [
       "Hola, quiero agendar una llamada:",
-      `Nombre: ${nombre}`,
-      `País: ${ubic.paisNombre()}`,
-      `Celular: ${cel.numeroE164}`,
-      `Día: ${fechaLarga.format(dia)}`,
-      `Hora (Colombia): ${hhmm(Number(d.get("hora")))}`,
+      `Nombre: ${nombre}`, `País: ${ubic.paisNombre()}`, `Celular: ${cel.numeroE164}`,
+      `Día: ${fechaLarga.format(dia)}`, `Hora (Colombia): ${hhmm(hora)}`,
       `Productos de interés: ${productos.length ? productos.join(", ") : "por definir"}`,
       d.get("nota") ? `Comentario: ${d.get("nota")}` : "",
     ].filter(Boolean).join("\n");
     const url = `https://wa.me/${typeof NEGOCIO !== "undefined" ? NEGOCIO.whatsapp : "573019580737"}?text=${encodeURIComponent(texto)}`;
+    const porWhatsApp = () => {
+      window.open(url, "_blank", "noopener");
+      $("#agenda-aviso").textContent = `Listo. Envía el mensaje de WhatsApp que se abrió y te confirmamos la llamada del ${cuando}.`;
+    };
     window.Medicion && Medicion.evento("Schedule", {});
-    window.open(url, "_blank", "noopener");
-    $("#agenda-aviso").textContent = `Listo. Envía el mensaje de WhatsApp que se abrió y te confirmamos la llamada del ${fechaLarga.format(dia)} a las ${hhmm(Number(d.get("hora")))}.`;
+    if (!calendario.activo) { porWhatsApp(); return; }
+
+    const boton = form.querySelector("button[type=submit]");
+    const textoBoton = boton.textContent;
+    boton.disabled = true; boton.textContent = "Agendando…";
+    try {
+      const r = await fetch("/api/agenda", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre, pais: ubic.paisNombre(), celular: cel.numeroE164, dia: ymd(dia), hora, productos, nota: d.get("nota") || "", acepto: true }),
+      });
+      const res = await r.json().catch(() => ({}));
+      if (r.status === 409) {
+        error.textContent = res.error || "Esa hora se acaba de ocupar. Elige otra.";
+        if (Array.isArray(res.ocupado)) { calendario.ocupado = res.ocupado; pintarDias(); }
+        return;
+      }
+      if (!res.ok) throw new Error(res.error || "No pudimos agendar");
+      const cambiar = `https://wa.me/${NEGOCIO.whatsapp}?text=${encodeURIComponent(`Hola, soy ${nombre}. Agendé una llamada para el ${cuando} y necesito cambiarla.`)}`;
+      const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      $("#agenda-aviso").innerHTML = `✅ <strong>¡Listo! Te llamamos el ${esc(cuando)} (hora de Colombia)</strong> al ${esc(cel.numeroE164)}. Si necesitas cambiarla, <a href="${cambiar}" target="_blank" rel="noopener">escríbenos por WhatsApp</a>.`;
+      calendario.ocupado.push({ inicio: new Date(C.instanteColombia(ymd(dia), hora)).toISOString(), fin: new Date(C.instanteColombia(ymd(dia), hora + AGENDA.duracionMinutos)).toISOString() });
+      pintarDias();
+    } catch (err) {
+      error.textContent = `${err.message}. Te dejamos el mensaje listo por WhatsApp.`;
+      porWhatsApp();
+    } finally {
+      boton.disabled = false; boton.textContent = textoBoton;
+    }
   });
 })();

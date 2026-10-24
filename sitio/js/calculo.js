@@ -73,6 +73,22 @@
     return { nombre, base, detalle: base ? `${base} · ${cant}` : cant };
   }
 
+  // Horas de inicio (minutos desde medianoche, hora de Colombia) en que se puede agendar una llamada el día "AAAA-MM-DD"
+  const aMinutos = (hhmm) => { const [h, m] = String(hhmm).split(":").map(Number); return h * 60 + (m || 0); };
+  function horasAgenda(ymd) {
+    if (typeof AGENDA === "undefined" || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return [];
+    const [y, m, d] = ymd.split("-").map(Number);
+    const dia = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    if (dia === 0 || AGENDA.festivos.includes(ymd)) return [];
+    const [ini, fin] = (dia === 6 ? AGENDA.sabado : AGENDA.lunesAViernes).map(aMinutos);
+    const [d0, d1] = AGENDA.descanso.map(aMinutos);
+    const paso = AGENDA.duracionMinutos, lista = [];
+    for (let t = ini; t + paso <= fin; t += paso) if (t + paso <= d0 || t >= d1) lista.push(t);
+    return lista;
+  }
+  // Fecha y hora de Colombia (UTC−5) → instante en milisegundos
+  const instanteColombia = (ymd, minutos) => { const [y, m, d] = ymd.split("-").map(Number); return Date.UTC(y, m - 1, d, 5, 0) + minutos * 60000; };
+
   // Revisa que una línea del pedido sea válida (lo usa el servidor antes de cobrar)
   function lineaValida(l) {
     if (!l || typeof l !== "object") return false;
@@ -100,6 +116,6 @@
   g.Calculo = {
     prod, MAX_CANTIDAD, nivelPara, siguienteNivel, paresEspuela, paresPatapioja, precioParPatapioja,
     precioLinea, subtotal, pesoGramos, regaloPara, describirLinea, lineaValida, limpiarLinea,
-    tieneTarifaInternacional, envioInternacionalUSD,
+    tieneTarifaInternacional, envioInternacionalUSD, horasAgenda, instanteColombia,
   };
 })(typeof window !== "undefined" ? window : globalThis);

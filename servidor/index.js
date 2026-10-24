@@ -9,6 +9,8 @@
 //   POST /api/paypal/crear     → pedido desde otro país: crea la orden de PayPal (en dólares)
 //   POST /api/paypal/capturar  → cuando el cliente vuelve de PayPal: cobra la orden y avisa por Telegram
 //   /api/admin/...         → datos de la app de pedidos (sitio/admin/), con clave ADMIN_CLAVE
+//   GET  /api/agenda       → horas ocupadas en Google Calendar (si está conectado)
+//   POST /api/agenda       → agenda una llamada: evento en Google Calendar + aviso por Telegram
 //   Tarea programada diaria (7:00 a. m. de Colombia) → resumen de pedidos por Telegram
 //   Tarea programada (cada 20 min) → avisa por Telegram los carritos que quedaron sin pagar
 
@@ -16,8 +18,9 @@ import { Tienda } from "./catalogo.generado.js";
 import { registrarPedidoWeb, registrarPago, revisarAbandonados } from "./pedidos.js";
 import { paypalListo, crearOrden, capturarOrden, consultarOrden, ESTADO_PAYPAL } from "./paypal.js";
 import { atenderAdmin, resumenDiario } from "./admin.js";
+import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario.js";
 
-const VERSION = "2026-10-23.6";
+const VERSION = "2026-10-23.7";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -82,6 +85,15 @@ export default {
         if (!cuerpo) return error("Solicitud inválida");
         if (ruta === "/api/cotizar") return await cotizar(cuerpo, env, ctx);
         return await crearPedido(cuerpo, url, env, request);
+      }
+      if (ruta === "/api/agenda") {
+        if (!(await dentroDelLimite(request, env, ruta))) return error("Demasiadas solicitudes. Espera un minuto.", 429);
+        if (request.method === "GET") return await agendaOcupado(env);
+        if (request.method !== "POST") return error("Método no permitido", 405);
+        if (!mismoOrigen(request, url)) return error("Origen no permitido", 403);
+        const cuerpo = await leerJSON(request);
+        if (!cuerpo) return error("Solicitud inválida");
+        return await agendarLlamada(cuerpo, env, request);
       }
       if (ruta.startsWith("/api/admin/")) {
         if (!(await dentroDelLimite(request, env, "/api/admin"))) return error("Demasiadas solicitudes. Espera un minuto.", 429);
@@ -557,6 +569,64 @@ async function rescatarPaypal(env, p) {
     if (r && r.ok && r.pedido === p.id) { const e = await registrarPagoPaypal(env, r); return e === "approved" || e === "pending"; }
   }
   return false;
+}
+
+/* ---------------- Agenda de llamadas (Google Calendar) ---------------- */
+let ocupadoGuardado = null; // { hasta, lista } — se guarda 1 minuto para no consultar a Google en cada visita
+async function listaOcupado(env, forzar = false) {
+  if (!forzar && ocupadoGuardado && ocupadoGuardado.hasta > Date.now()) return ocupadoGuardado.lista;
+  const desde = new Date(), hasta = new Date(Date.now() + 32 * 86400000);
+  const lista = await ocupado(env, calendarioId(env, Tienda.NEGOCIO.correo), desde.toISOString(), hasta.toISOString());
+  ocupadoGuardado = { hasta: Date.now() + 60000, lista };
+  return lista;
+}
+async function agendaOcupado(env) {
+  if (!cuentaServicio(env)) return json({ ok: true, activo: false });
+  try { return json({ ok: true, activo: true, ocupado: await listaOcupado(env) }); }
+  catch (e) { console.error("Google Calendar", e && e.message); return json({ ok: true, activo: false }); }
+}
+async function agendarLlamada(c, env, request) {
+  if (!cuentaServicio(env)) return error("La agenda en línea no está activa. Escríbenos por WhatsApp.", 503);
+  const A = Tienda.AGENDA;
+  const nombre = texto(c.nombre, 80), pais = texto(c.pais, 40), celular = texto(c.celular, 20).replace(/[^\d+]/g, "");
+  const dia = String(c.dia || ""), hora = Number(c.hora);
+  const productos = (Array.isArray(c.productos) ? c.productos : []).slice(0, 12).map((x) => texto(x, 60)).filter(Boolean);
+  const nota = texto(c.nota, 200);
+  if (!nombre || !/^\+\d{8,15}$/.test(celular)) return error("Revisa tu nombre y tu celular.");
+  if (c.acepto !== true) return error("Para agendar, autoriza el tratamiento de tus datos.");
+  if (!C.horasAgenda(dia).includes(hora)) return error("Esa hora no está dentro del horario de llamadas.");
+  const inicio = C.instanteColombia(dia, hora), fin = inicio + A.duracionMinutos * 60000;
+  if (inicio < Date.now() + (A.anticipacionMinutos - 5) * 60000 || inicio > Date.now() + 31 * 86400000) return error("Elige una hora más adelante.");
+  // Freno contra abuso: pocas citas por celular y por conexión al día
+  if (env.PEDIDOS) {
+    const ip = request.headers.get("CF-Connecting-IP") || "x";
+    const kc = `agenda:cel:${celular}`, ki = `agenda:ip:${ip}`;
+    const [nc, ni] = await Promise.all([env.PEDIDOS.get(kc), env.PEDIDOS.get(ki)]).then((v) => v.map((x) => Number(x) || 0));
+    if (nc >= 2 || ni >= 4) return error("Ya tienes llamadas agendadas. Si necesitas otra, escríbenos por WhatsApp.", 429);
+    await Promise.all([env.PEDIDOS.put(kc, String(nc + 1), { expirationTtl: 86400 }), env.PEDIDOS.put(ki, String(ni + 1), { expirationTtl: 86400 })]);
+  }
+  let lista;
+  try { lista = await listaOcupado(env, true); } catch (e) { console.error("Google Calendar", e && e.message); return error("No pudimos revisar la agenda en este momento.", 502); }
+  if (lista.some((o) => inicio < Date.parse(o.fin) && fin > Date.parse(o.inicio))) return json({ ok: false, error: "Esa hora se acaba de ocupar. Elige otra.", ocupado: lista }, 409);
+  const cuando = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }).format(new Date(inicio));
+  const wa = `https://wa.me/${celular.replace(/\D/g, "")}`;
+  try {
+    await crearEvento(env, calendarioId(env, Tienda.NEGOCIO.correo), {
+      inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(),
+      titulo: `📞 Llamar a ${nombre} (${pais || "?"})`,
+      descripcion: [`Celular: ${celular}`, `WhatsApp: ${wa}`, `País: ${pais}`, `Productos de interés: ${productos.join(", ") || "por definir"}`, nota ? `Comentario: ${nota}` : "", "", "Agendada desde la página web."].filter((x) => x !== "").join("\n"),
+    });
+  } catch (e) { console.error("Google Calendar evento", e && e.message); return error("No pudimos guardar la cita en este momento.", 502); }
+  ocupadoGuardado = null;
+  await telegram(env, [
+    "📞 <b>LLAMADA AGENDADA</b>",
+    `🗓 ${esc(cuando)} (hora de Colombia)`,
+    `<b>${esc(nombre)}</b> · ${esc(pais)}`,
+    `📱 ${esc(celular)} · <a href="${esc(wa)}">WhatsApp</a>`,
+    `Productos: ${esc(productos.join(", ") || "por definir")}`,
+    nota ? `Comentario: ${esc(nota)}` : null,
+  ].filter((x) => x !== null).join("\n"));
+  return json({ ok: true, inicio: new Date(inicio).toISOString() });
 }
 
 /* ---------------- Estado del pago (página de gracias) ---------------- */
