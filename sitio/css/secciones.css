@@ -418,3 +418,10 @@ input, select, textarea { background-color: #fff; color: #142033; }
 .pp-seccion { padding: 0; }
 
 #verificacion-robot { margin: 4px 0 10px; min-height: 0; }
+
+/* ----- Precio de detal y por mayor en tarjetas y fichas ----- */
+.producto__mayor, .pp-desde small { display: block; font-size: .85rem; font-weight: 600; color: var(--tinta-suave); margin-top: 2px; }
+.producto__enlace { display: inline-block; margin-top: 8px; font-size: .88rem; color: var(--azul); }
+.error__wa { display: inline-block; margin-top: 6px; font-weight: 700; color: #0F6B39; }
+/* Ficha de producto con fondo sólido (el texto de atrás no se transparenta) */
+.ficha__caja { background: #fff; }

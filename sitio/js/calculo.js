@@ -5,6 +5,7 @@
   "use strict";
   const g = global;
   const prod = (id) => PRODUCTOS.find((p) => p.id === id);
+  const MAX_CANTIDAD = 20000; // por línea del pedido
 
   const nivelPara = (pares) => [...NIVELES].reverse().find((n) => pares >= n.desde) || NIVELES[0];
   const siguienteNivel = (pares) => NIVELES.find((n) => n.desde > pares);
@@ -70,13 +71,17 @@
     if (!l || typeof l !== "object") return false;
     const p = prod(l.producto);
     if (!p || p.sinPrecio) return false;
-    if (!Number.isInteger(l.cantidad) || l.cantidad < 1 || l.cantidad > 100000) return false;
-    if (p.tipo === "espuela") return p.medidas.includes(l.medida) && PRESENTACIONES.some((x) => x.id === l.presentacion);
-    if (p.tipo === "patapioja") return p.colores.some((x) => x.id === l.color);
-    return (p.variantes || []).some((x) => x.id === l.variante);
+    if (!Number.isInteger(l.cantidad) || l.cantidad < 1 || l.cantidad > MAX_CANTIDAD) return false;
+    let ok;
+    if (p.tipo === "espuela") ok = p.medidas.includes(l.medida) && PRESENTACIONES.some((x) => x.id === l.presentacion);
+    else if (p.tipo === "patapioja") ok = p.colores.some((x) => x.id === l.color);
+    else ok = (p.variantes || []).some((x) => x.id === l.variante);
+    if (!ok) return false;
+    try { const t = precioLinea(l, [l]).total; return Number.isFinite(t) && t > 0; } catch (e) { return false; }
   }
   // Deja solo los campos conocidos de una línea
   function limpiarLinea(l) {
+    if (!l || typeof l !== "object") return {};
     const p = prod(l && l.producto);
     const base = { producto: String(l.producto), cantidad: Math.floor(Number(l.cantidad)) };
     if (!p) return base;
@@ -86,7 +91,7 @@
   }
 
   g.Calculo = {
-    prod, nivelPara, siguienteNivel, paresEspuela, paresPatapioja, precioParPatapioja,
+    prod, MAX_CANTIDAD, nivelPara, siguienteNivel, paresEspuela, paresPatapioja, precioParPatapioja,
     precioLinea, subtotal, pesoGramos, regaloPara, describirLinea, lineaValida, limpiarLinea,
   };
 })(typeof window !== "undefined" ? window : globalThis);

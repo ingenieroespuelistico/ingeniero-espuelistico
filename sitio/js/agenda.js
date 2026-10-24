@@ -1,5 +1,5 @@
 // Agenda de llamadas: el cliente elige día y hora dentro del horario de atención (hora de Colombia).
-// Por ahora la solicitud sale por WhatsApp. Cuando la página esté en Netlify, se creará el evento en Google Calendar.
+// Por ahora la solicitud sale por WhatsApp. Más adelante se podrá crear el evento en Google Calendar desde el servidor (Cloudflare).
 (() => {
   "use strict";
   const $ = (s, el = document) => el.querySelector(s);

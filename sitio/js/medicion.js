@@ -20,6 +20,8 @@ const PIXEL_TIKTOK = "DBDV8JBC77U4J2JQC9OG"; // TikTok Ads Manager → Herramien
     const s = document.createElement("script");
     s.async = true; s.src = "https://connect.facebook.net/en_US/fbevents.js";
     document.head.appendChild(s);
+    // Sin "configuración automática": el píxel no lee campos del formulario (cédula, celular)
+    window.fbq("set", "autoConfig", false, PIXEL_META);
     window.fbq("init", PIXEL_META);
     window.fbq("track", "PageView");
   }
@@ -86,7 +88,7 @@ const PIXEL_TIKTOK = "DBDV8JBC77U4J2JQC9OG"; // TikTok Ads Manager → Herramien
     aviso.setAttribute("aria-label", "Aviso de medición y privacidad");
     aviso.innerHTML = `
       <p><strong>¿Nos permites medir tu visita?</strong> Usamos ${PIXEL_TIKTOK ? "los píxeles de Meta (Facebook) y TikTok" : "el Pixel de Meta (Facebook)"} para saber qué anuncios te trajeron y mostrar
-      publicidad útil. Tu pedido funciona igual si dices que no. <a href="privacidad.html#cookies">Más información sobre cookies</a></p>
+      publicidad útil. Tu pedido funciona igual si dices que no. <a href="/privacidad#cookies">Más información sobre cookies</a></p>
       <div class="aviso-medicion__botones">
         <button type="button" class="boton aviso-medicion__no" data-eleccion="no">No, gracias</button>
         <button type="button" class="boton boton--azul" data-eleccion="si">Aceptar</button>
@@ -100,7 +102,13 @@ const PIXEL_TIKTOK = "DBDV8JBC77U4J2JQC9OG"; // TikTok Ads Manager → Herramien
 
   document.addEventListener("DOMContentLoaded", () => {
     if (decision === "si") cargarPixel();
-    else if (decision === null && hayPixel) setTimeout(mostrarAviso, 1500);
+    // El aviso sale cuando la persona empieza a usar la página (o a los 6 s), para no tapar la primera vista
+    else if (decision === null && hayPixel) {
+      let t = null;
+      const mostrar = () => { clearTimeout(t); ["scroll", "pointerdown", "keydown"].forEach((ev) => removeEventListener(ev, mostrar)); setTimeout(mostrarAviso, 400); };
+      ["scroll", "pointerdown", "keydown"].forEach((ev) => addEventListener(ev, mostrar, { passive: true, once: true }));
+      t = setTimeout(mostrar, 6000);
+    }
     document.addEventListener("click", (e) => {
       if (e.target.closest("[data-abrir-cookies]")) { e.preventDefault(); mostrarAviso(); }
       // Contacto por WhatsApp

@@ -15,6 +15,14 @@ const N = Tienda.NEGOCIO;
 const URL_BASE = String(N.sitio || "").replace(/\/+$/, "");
 const C = Tienda.Calculo;
 const hoy = new Date().toISOString().slice(0, 10);
+import { execSync } from "node:child_process";
+// Fecha del último cambio real de cada página (según GitHub); si no se puede saber, la de hoy
+function fechaDe(...rutas) {
+  try {
+    const f = execSync(`git log -1 --format=%cs -- ${rutas.map((r) => JSON.stringify(r)).join(" ")}`, { cwd: raiz, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    return f || hoy;
+  } catch { return hoy; }
+}
 
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const ld = (obj) => `<script type="application/ld+json">${JSON.stringify(obj).replace(/</g, "\\u003c")}</script>`;
@@ -39,6 +47,20 @@ writeFileSync(join(sitio, "js", "fotos-lista.js"),
   `// ARCHIVO GENERADO al publicar: lista de fotos que hay en la carpeta fotos/. No lo edites.\nwindow.FOTOS = ${JSON.stringify(FOTOS, null, 1)};\n`);
 
 /* ---------- 2. Precios para mostrar ---------- */
+// Precio de detal: lo que paga quien compra poco (es el que se muestra y el que va a Google)
+function precioDetal(p) {
+  if (p.tipo === "espuela") return p.precios[Tienda.NIVELES[0].id];
+  if (p.tipo === "patapioja") return p.tramos[0].precio;
+  if (p.tipo === "unidad-docena") return Math.min(...p.variantes.map((v) => v.unidad));
+  return Math.min(...p.variantes.map((v) => v.precio));
+}
+function textoMayor(p) {
+  if (p.tipo === "espuela") { const m = Tienda.NIVELES[1]; return `por mayor desde ${pesos(p.precios[m.id])} (${m.desde}+ pares)`; }
+  if (p.tipo === "patapioja") { const t = p.tramos.find((x) => x.desde >= 12) || p.tramos[0]; return `docena a ${pesos(t.precio * 12)}`; }
+  if (p.tipo === "unidad-docena") return `docena desde ${pesos(Math.min(...p.variantes.map((v) => v.docena)))}`;
+  return "";
+}
+const propio = (p) => p.tipo !== "variantes"; // el esparadrapo es de reventa
 function rangoPrecio(p) {
   if (p.tipo === "espuela") {
     const valores = Object.values(p.precios), ajustes = Object.values(Tienda.AJUSTE_EMPAQUE);
@@ -82,7 +104,7 @@ function datosTecnicos(p) {
   if (p.variantes && p.tipo !== "patapioja") filas.push(["Peso aproximado", p.variantes.map((v) => `${esc(v.nombre)}: ${v.peso} g`).join(" · ")]);
   if (p.dureza && p.dureza !== "—") filas.push(["Dureza", p.dureza]);
   if (p.tipo === "espuela") filas.push(["Presentación", Tienda.PRESENTACIONES.map((x) => `${x.nombre.toLowerCase()} (${x.nota.toLowerCase()})`).join(", ")]);
-  filas.push(["Fabricación", p.tipo === "variantes" ? "Producto de reventa seleccionado por nosotros" : "Taller propio en Ibagué, Colombia"]);
+  filas.push([propio(p) ? "Fabricación" : "Origen", propio(p) ? "Taller propio en Ibagué, Colombia" : "Producto seleccionado por nosotros (no es de fabricación propia)"]);
   return `<dl class="pp-datos">${filas.map(([a, b]) => `<div><dt>${esc(a)}</dt><dd>${b}</dd></div>`).join("")}</dl>`;
 }
 
@@ -129,23 +151,25 @@ for (const p of productos) {
   const ruta = urlProducto(p);
   const fotos = FOTOS[p.id] || [];
   const [bajo, alto] = rangoPrecio(p);
+  const detal = precioDetal(p), mayor = textoMayor(p);
   const tituloSEO = p.tipo === "espuela" ? `${p.nombre} para gallo` : p.nombre;
-  const titulo = `${tituloSEO}: precio por mayor y detal | Ingeniero Espuelístico`;
+  const titulo = (`${tituloSEO} | Ingeniero Espuelístico`.length <= 60 ? `${tituloSEO} | Ingeniero Espuelístico` : `${tituloSEO} | Ing. Espuelístico`);
   const u = unidadDe(p) ? " " + unidadDe(p) : "";
-  const descripcion = `${p.nombre}: ${p.detalle.replace(/\.$/, "")}. Desde ${pesos(bajo)}${u}. Fabricantes en Ibagué, envíos a toda Colombia y exportación. Pago seguro con Mercado Pago o contraentrega.`.replace(/\s+/g, " ");
+  const detalle = p.detalle.charAt(0).toLowerCase() + p.detalle.slice(1).replace(/\.$/, "");
+  const descripcion = `${p.nombre}, ${detalle}. ${pesos(detal)}${u}${mayor ? `; ${mayor}` : ""}. ${propio(p) ? "Fábrica en Ibagué" : "Desde Ibagué"}, envíos a toda Colombia.`.replace(/\s+/g, " ");
   const imagenes = fotos.map((f) => absoluta("/" + f));
   const datosProducto = {
     "@context": "https://schema.org", "@type": "Product",
     name: p.nombre, description: p.descripcion, sku: p.id, category: p.tipo === "espuela" ? "Espuelas para gallos" : "Accesorios para gallos",
-    brand: { "@type": "Brand", name: "Ingeniero Espuelístico" },
+    ...(propio(p) ? { brand: { "@type": "Brand", name: "Ingeniero Espuelístico" } } : {}),
     ...(imagenes.length ? { image: imagenes } : {}),
     offers: {
-      "@type": "AggregateOffer", priceCurrency: "COP", lowPrice: Math.round(bajo), highPrice: Math.round(alto),
+      "@type": "Offer", priceCurrency: "COP", price: Math.round(detal), itemCondition: "https://schema.org/NewCondition",
       availability: "https://schema.org/InStock", url: absoluta(ruta),
       seller: { "@type": "Organization", name: "Ingeniero Espuelístico" },
       hasMerchantReturnPolicy: {
         "@type": "MerchantReturnPolicy", applicableCountry: "CO", returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
-        merchantReturnDays: 5, returnMethod: "https://schema.org/ReturnByMail", returnFees: "https://schema.org/ReturnShippingFees",
+        merchantReturnDays: 5, returnMethod: "https://schema.org/ReturnByMail", returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
       },
       shippingDetails: {
         "@type": "OfferShippingDetails", shippingDestination: { "@type": "DefinedRegion", addressCountry: "CO" },
@@ -162,7 +186,7 @@ for (const p of productos) {
   };
   const galeria = fotos.length
     ? `<div class="pp-galeria">${fotos.map((f, i) => `<img src="/${f}" alt="${esc(p.nombre)}, foto ${i + 1} de ${fotos.length}" width="600" height="600" ${i ? 'loading="lazy"' : 'fetchpriority="high"'}>`).join("")}</div>`
-    : `<div class="pp-galeria pp-galeria--vacia"><p>Pronto subiremos fotos de este producto. Pídelas por WhatsApp.</p></div>`;
+    : `<div class="pp-galeria pp-galeria--vacia"><p>¿Quieres ver fotos o un video de este producto? Te los enviamos por WhatsApp.</p></div>`;
   const html = `<!doctype html>
 <html lang="es">
 <head>
@@ -194,7 +218,7 @@ ${CABECERA}
     <div class="pp-info">
       <h1>${esc(tituloSEO)}</h1>
       <p class="pp-detalle">${esc(p.detalle)}</p>
-      <p class="pp-desde">Desde <strong>${pesos(bajo)}</strong>${u}</p>
+      <p class="pp-desde"><strong>${pesos(detal)}</strong>${u}${mayor ? `<small>${esc(mayor.charAt(0).toUpperCase() + mayor.slice(1))}</small>` : ""}</p>
       <div class="pp-acciones">
         <a class="boton boton--azul" href="/?producto=${encodeURIComponent(p.id)}#catalogo">Comprar en la tienda</a>
         <a class="boton boton--verde-borde" href="https://wa.me/${N.whatsapp}?text=${encodeURIComponent(`Hola, quiero información de: ${p.nombre}`)}" target="_blank" rel="noopener">Preguntar por WhatsApp</a>
@@ -236,6 +260,10 @@ const tienda = {
   areaServed: ["Colombia", "Ecuador", "Perú", "Panamá", "Costa Rica", "Estados Unidos", "Canadá"].map((n) => ({ "@type": "Country", name: n })),
   sameAs: [N.tiktok, N.facebook].filter(Boolean),
   priceRange: "$",
+  hasMerchantReturnPolicy: {
+    "@type": "MerchantReturnPolicy", applicableCountry: "CO", returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
+    merchantReturnDays: 5, returnMethod: "https://schema.org/ReturnByMail", returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
+  },
   currenciesAccepted: "COP",
   paymentAccepted: "PSE, tarjeta de crédito, tarjeta débito, Efecty, contraentrega, PayPal, Western Union",
   hasOfferCatalog: {
@@ -266,13 +294,30 @@ reemplazar("seo", [
   ld(tienda), ld(web), ld(faq),
 ].filter(Boolean).join("\n"));
 reemplazar("enlaces-productos", `<ul class="pie__lista">${enlacesProductos()}</ul>`);
+reemplazar("catalogo", productos.map((p) => {
+  const f = (FOTOS[p.id] || [])[0], u = unidadDe(p), m = textoMayor(p);
+  return `<article class="producto flotante" data-producto="${p.id}">
+  <div class="producto__foto">${f ? `<img src="${f}" alt="${esc(p.nombre)}" loading="lazy" decoding="async" width="600" height="600">` : ""}</div>
+  <div class="producto__info"><h3>${esc(p.nombre)}</h3><p class="producto__detalle">${esc(p.detalle)}</p>
+  <p class="producto__precio"><strong>${pesos(precioDetal(p))}</strong>${u ? " " + u : ""}${m ? `<small class="producto__mayor">${esc(m.charAt(0).toUpperCase() + m.slice(1))}</small>` : ""}</p>
+  <a class="producto__enlace" href="${urlProducto(p)}">Ficha completa del producto</a></div>
+</article>`;
+}).join("\n"));
 writeFileSync(rutaIndex, index);
+
+/* ---------- 5b. Canónico de las páginas legales (siguen la dirección de NEGOCIO.sitio) ---------- */
+for (const n of ["privacidad", "terminos", "devoluciones"]) {
+  const r = join(sitio, `${n}.html`);
+  writeFileSync(r, readFileSync(r, "utf8").replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${absoluta("/" + n)}">`));
+}
 
 /* ---------- 6. sitemap.xml, robots.txt, llms.txt ---------- */
 const paginas = ["/", ...productos.map(urlProducto), "/devoluciones", "/terminos", "/privacidad"];
+const fechaPagina = { "/": fechaDe("sitio/index.html", "sitio/js/precios.js"), "/devoluciones": fechaDe("sitio/devoluciones.html"), "/terminos": fechaDe("sitio/terminos.html"), "/privacidad": fechaDe("sitio/privacidad.html") };
+for (const p of productos) fechaPagina[urlProducto(p)] = fechaDe("sitio/js/precios.js", "sitio/js/productos", `sitio/fotos/${p.id}`);
 writeFileSync(join(sitio, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${paginas.map((r) => `  <url><loc>${absoluta(r)}</loc><lastmod>${hoy}</lastmod></url>`).join("\n")}
+${paginas.map((r) => `  <url><loc>${absoluta(r)}</loc><lastmod>${fechaPagina[r] || hoy}</lastmod></url>`).join("\n")}
 </urlset>
 `);
 writeFileSync(join(sitio, "robots.txt"), `User-agent: *
@@ -292,7 +337,15 @@ writeFileSync(join(sitio, "llms.txt"), `# Ingeniero Espuelístico
 - Pagos: Mercado Pago (PSE, tarjeta, Efecty), contraentrega en Colombia; PayPal o Western Union desde el exterior.
 
 ## Productos
-${productos.map((p) => { const [b] = rangoPrecio(p); return `- [${p.nombre}](${absoluta(urlProducto(p))}): ${p.detalle}. Desde ${pesos(b)} ${unidadDe(p)}.`; }).join("\n")}
+${productos.map((p) => { const u = unidadDe(p); const m = textoMayor(p); return `- [${p.nombre}](${absoluta(urlProducto(p))}): ${p.detalle.replace(/\.$/, "")}. ${pesos(precioDetal(p))}${u ? " " + u : ""} al detal${m ? `; ${m}` : ""}.`; }).join("\n")}
+
+## Precios de espuelas por cantidad (precio por par en bolsa; se suman todas las referencias del pedido)
+${Tienda.NIVELES.map((n, i) => `- ${n.nombre}: desde ${n.desde} pares`).join("\n")}
+- En caja: ${pesos(Tienda.AJUSTE_EMPAQUE.caja)} más por par. A granel: ${pesos(Math.abs(Tienda.AJUSTE_EMPAQUE.granel))} menos por par.
+
+## Envíos
+- Colombia: con Interrapidísimo; el valor se calcula en la tienda según municipio y peso. Contraentrega desde ${pesos(Tienda.CONTRAENTREGA_MINIMO)} (el envío se paga por adelantado).
+- Despacho el mismo día si se paga antes de las 4:00 p.m. (sábados antes de las 10:00 a.m.).
 
 ## Políticas
 - [Cambios y devoluciones](${absoluta("/devoluciones")})

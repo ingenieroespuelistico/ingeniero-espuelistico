@@ -25,6 +25,9 @@
 
   // Los cálculos de precio están en js/calculo.js (los comparte con el servidor)
   const C = window.Calculo;
+  // Si el carrito guardado tiene un producto, medida u opción que ya no existe, se descarta esa línea
+  pedido = (Array.isArray(pedido) ? pedido : []).map((l) => { try { const x = C.limpiarLinea(l); return C.lineaValida(x) ? x : null; } catch (e) { return null; } }).filter(Boolean);
+  guardar();
   const nivelPara = C.nivelPara, siguienteNivel = C.siguienteNivel, precioParPatapioja = C.precioParPatapioja, regaloPara = C.regaloPara;
   const paresEspuela = (lista = pedido) => C.paresEspuela(lista);
   const paresPatapioja = (lista = pedido) => C.paresPatapioja(lista);
@@ -35,6 +38,7 @@
   const textoPeso = (g) => g >= 1000 ? `${(g / 1000).toLocaleString("es-CO", { maximumFractionDigits: 2 })} kg` : `${Math.round(g)} g`;
 
   function agregar(linea) {
+    linea.cantidad = Math.min(C.MAX_CANTIDAD, Math.max(1, Math.floor(linea.cantidad) || 1));
     const igual = pedido.find((l) => ["producto", "medida", "presentacion", "color", "variante"].every((k) => l[k] === linea[k]));
     if (igual) igual.cantidad += linea.cantidad; else pedido.push(linea);
     guardar(); pintarPedido();
@@ -169,12 +173,23 @@
       <strong>${FICHAS[p.id].dureza}</strong>
     </div>` : "";
 
+  // Precio de detal (lo que paga quien compra poco) y, aparte, la mejor tarifa por mayor
   function precioDesde(p) {
-    if (p.tipo === "espuela") return `Desde <strong>${pesos(p.precios.gran_distribuidor + Math.min(0, ...Object.values(AJUSTE_EMPAQUE)))}</strong> el par`;
-    if (p.tipo === "patapioja") return `Desde <strong>${pesos(1300)}</strong> el par`;
-    if (p.tipo === "unidad-docena") return `Desde <strong>${pesos(Math.min(...p.variantes.map((v) => v.docena / 12)))}</strong> ${p.unidad === "barra" ? "la barra" : "el par"} por docena`;
+    if (p.tipo === "espuela") {
+      const may = NIVELES[1];
+      return `<strong>${pesos(p.precios.minorista)}</strong> el par<small class="producto__mayor">Por mayor desde ${pesos(p.precios[may.id])} (${may.desde}+ pares)</small>`;
+    }
+    if (p.tipo === "patapioja") {
+      const t = p.tramos, docena = t.find((x) => x.desde >= 12) || t[0];
+      return `<strong>${pesos(t[0].precio)}</strong> el par<small class="producto__mayor">Docena a ${pesos(docena.precio * 12)} · baja con la cantidad</small>`;
+    }
+    if (p.tipo === "unidad-docena") {
+      const u = p.unidad === "barra" ? "la barra" : "el par";
+      return `<strong>${pesos(Math.min(...p.variantes.map((v) => v.unidad)))}</strong> ${u}<small class="producto__mayor">Docena desde ${pesos(Math.min(...p.variantes.map((v) => v.docena)))}</small>`;
+    }
     return `Desde <strong>${pesos(Math.min(...p.variantes.map((v) => v.precio)))}</strong>`;
   }
+  const slugProducto = (p) => p.slug || String(p.nombre).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
   function tarjeta(p) {
     return `
@@ -186,6 +201,7 @@
           <p class="producto__precio">${precioDesde(p)}</p>
           ${conDureza(p) ? `<p class="producto__chip">Dureza ${FICHAS[p.id].dureza.toLowerCase()}</p>` : ""}
           <button class="producto__abrir" type="button" aria-label="Ver detalles de ${p.nombre}">Ver y comprar</button>
+          <a class="producto__enlace" href="/productos/${slugProducto(p)}">Ficha completa del producto</a>
         </div>
       </article>`;
   }
@@ -197,7 +213,7 @@
       buscarFoto(id, 1).then((f) => {
         if (f) $(".producto__foto", card).innerHTML = `<img src="${f}" alt="${prod(id).nombre}" loading="lazy" decoding="async" width="600" height="600">`;
       });
-      card.addEventListener("click", () => abrirFicha(id));
+      card.addEventListener("click", (e) => { if (e.target.closest(".producto__enlace")) return; abrirFicha(id); });
     });
   }
   pintarCatalogo();
@@ -210,16 +226,16 @@
     if (p.tipo === "espuela") return `
       <label class="campo">Medida<select name="medida">${opciones(p.medidas, (m) => m, medidaTexto)}</select></label>
       <label class="campo">Presentación<select name="presentacion">${opciones(PRESENTACIONES, (x) => x.id, (x) => `${x.nombre}${x.ajuste ? ` (${x.ajuste > 0 ? "+" : "−"}${pesos(Math.abs(x.ajuste))})` : ""}`)}</select></label>
-      <label class="campo campo--ancho">Cantidad de pares<input name="cantidad" type="number" min="1" value="12" inputmode="numeric"></label>`;
+      <label class="campo campo--ancho">Cantidad de pares<input name="cantidad" type="number" min="1" max="20000" value="12" inputmode="numeric"></label>`;
     if (p.tipo === "patapioja") return `
       <label class="campo">Color<select name="color">${opciones(p.colores, (c) => c.id, (c) => `${c.nombre}: ${c.nota}`)}</select></label>
-      <label class="campo">Cantidad de pares<input name="cantidad" type="number" min="1" value="12" inputmode="numeric"></label>`;
+      <label class="campo">Cantidad de pares<input name="cantidad" type="number" min="1" max="20000" value="12" inputmode="numeric"></label>`;
     if (p.tipo === "unidad-docena") return `
       <label class="campo">Tipo<select name="variante">${opciones(p.variantes, (v) => v.id, (v) => v.nombre)}</select></label>
-      <label class="campo">Cantidad (${p.unidad === "barra" ? "barras" : "pares"})<input name="cantidad" type="number" min="1" value="12" inputmode="numeric"></label>`;
+      <label class="campo">Cantidad (${p.unidad === "barra" ? "barras" : "pares"})<input name="cantidad" type="number" min="1" max="20000" value="12" inputmode="numeric"></label>`;
     return `
       <label class="campo campo--ancho">${p.etiquetaVariante || "Tipo"}<select name="variante">${opciones(p.variantes, (v) => v.id, (v) => `${v.nombre} · ${pesos(v.precio)}`)}</select></label>
-      <label class="campo">Cantidad<input name="cantidad" type="number" min="1" value="1" inputmode="numeric"></label>`;
+      <label class="campo">Cantidad<input name="cantidad" type="number" min="1" max="20000" value="1" inputmode="numeric"></label>`;
   }
 
   function lineaDesdeFormulario(f, id) {
@@ -423,10 +439,15 @@
               <input type="number" min="1" inputmode="numeric" value="${l.cantidad}" data-cantidad="${i}" aria-label="Cantidad">
               <button type="button" data-mas="${i}" aria-label="Agregar uno">+</button>
             </div>
-            <button class="linea__quitar" type="button" data-quitar="${i}">Quitar</button>
+            <button class="linea__quitar" type="button" data-quitar="${i}" aria-label="Quitar ${d.nombre} del pedido">Quitar</button>
           </div></div>`;
       }).join("");
-      const cambiar = (i, n) => { if (n <= 0) pedido.splice(i, 1); else pedido[i].cantidad = n; guardar(); pintarPedido(); };
+      const cambiar = (i, n) => {
+        if (n <= 0) pedido.splice(i, 1);
+        else pedido[i].cantidad = Math.min(C.MAX_CANTIDAD, n);
+        if (n > C.MAX_CANTIDAD) $("#error-formulario").textContent = `Por la página se pueden pedir hasta ${C.MAX_CANTIDAD.toLocaleString("es-CO")} por producto. Para más, escríbenos por WhatsApp.`;
+        guardar(); pintarPedido();
+      };
       $$("[data-quitar]", cont).forEach((b) => b.addEventListener("click", () => cambiar(Number(b.dataset.quitar), 0)));
       $$("[data-menos]", cont).forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.menos); cambiar(i, pedido[i].cantidad - 1); }));
       $$("[data-mas]", cont).forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.mas); cambiar(i, pedido[i].cantidad + 1); }));
@@ -446,7 +467,7 @@
       <div class="total"><span>Subtotal productos</span><span>${pesos(sub)}</span></div>
       ${pedido.length ? `<div><span>Peso aproximado del paquete</span><span>${textoPeso(pesoGramos())}</span></div>` : ""}
       ${window.Moneda && !Moneda.esCOP() ? `<div class="totales__cop"><span>Se cobra en pesos colombianos</span><span>${pesosCOP(sub)} COP</span></div>` : ""}
-      <div data-fila-envio><span>Envío</span><span data-envio>—</span></div>
+      <div data-fila-envio><span>Envío</span><span data-envio aria-live="polite">—</span></div>
       <div class="total" data-fila-total hidden><span>Total a pagar</span><span data-total></span></div>`;
     pintarPagos();
     actualizarEnvio();
@@ -490,10 +511,10 @@
     temporizadorEnvio = setTimeout(async () => {
       try {
         const r = await fetch("/api/cotizar", {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
           body: JSON.stringify({ pedido, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), pago: pagoElegido() === "Contraentrega" ? "contraentrega" : "en_linea" }),
         });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({ ok: false, error: r.status === 429 ? "Muchas consultas seguidas. Espera un minuto." : "No pudimos calcular el envío." }));
         if (cotizacion.clave !== clave) return;
         cotizacion = d.ok ? { clave, estado: "listo", datos: d } : { clave, estado: "error", datos: d.error || "No pudimos calcular el envío." };
       } catch (e) {
@@ -521,11 +542,6 @@
     error.textContent = "";
     const d = Object.fromEntries(new FormData(f));
     const paisNombre = u ? u.paisNombre() : "Colombia";
-    // En Colombia: pago en línea o contraentrega por Mercado Pago (el servidor recalcula precios y envío)
-    if (esColombia() && ((d.pago || "").startsWith("Pago en línea") || d.pago === "Contraentrega")) {
-      irAPagar(d, cel.numeroE164);
-      return;
-    }
     const pares = paresEspuela(), regalo = regaloPara(pares);
     const lineas = pedido.map((l) => { const x = describirLinea(l); return `• ${x.nombre}: ${x.detalle} = ${pesosCOP(precioLinea(l).total)}`; });
     const texto = [
@@ -539,6 +555,11 @@
       `Nombre: ${d.nombre}`, `Documento: ${d.documento}`, `Celular: ${cel.numeroE164}`,
       `País: ${paisNombre}`, `Región: ${u ? u.region() : ""}`, `Ciudad: ${u ? u.ciudad() : ""}`, `Dirección: ${d.direccion}`,
     ].filter(Boolean).join("\n");
+    // En Colombia: pago en línea o contraentrega por Mercado Pago (el servidor recalcula precios y envío)
+    if (esColombia() && ((d.pago || "").startsWith("Pago en línea") || d.pago === "Contraentrega")) {
+      irAPagar(d, cel.numeroE164, texto);
+      return;
+    }
     window.Medicion && Medicion.evento("InitiateCheckout", { value: Math.round(subtotal()), num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
     window.open(enlaceWA(texto), "_blank", "noopener");
   });
@@ -586,32 +607,46 @@
     throw new Error("No pudimos completar la verificación de seguridad. Si ves la casilla arriba del botón, márcala; si no, recarga la página.");
   }
 
-  async function irAPagar(d, celular) {
+  async function irAPagar(d, celular, textoWA) {
     const boton = $("#boton-confirmar"), etiqueta = $("#boton-confirmar-texto"), error = $("#error-formulario");
     const textoAntes = etiqueta.textContent;
+    const contra = d.pago === "Contraentrega";
+    // Total que el cliente tiene en pantalla: el servidor lo compara con el que va a cobrar
+    const totalVisto = cotizacion.estado === "listo" && cotizacion.datos ? (contra ? cotizacion.datos.valor : Math.round(subtotal()) + cotizacion.datos.valor) : undefined;
     boton.disabled = true; etiqueta.textContent = "Abriendo el pago seguro…";
     try {
       const verificacion = await tokenTurnstile(etiqueta);
       etiqueta.textContent = "Abriendo el pago seguro…";
-      const r = await fetch("/api/pedido", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          verificacion,
-          pedido, pago: d.pago === "Contraentrega" ? "contraentrega" : "en_linea", acepto: $("#pedido-acepto").checked,
-          cliente: { nombre: d.nombre, documento: d.documento, celular, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
-        }),
-      });
-      const res = await r.json();
+      let r;
+      try {
+        r = await fetch("/api/pedido", {
+          method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout ? AbortSignal.timeout(25000) : undefined,
+          body: JSON.stringify({
+            verificacion, totalVisto,
+            pedido, pago: contra ? "contraentrega" : "en_linea", acepto: $("#pedido-acepto").checked,
+            cliente: { nombre: d.nombre, documento: d.documento, celular, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
+          }),
+        });
+      } catch (e) { throw new Error("La conexión tardó demasiado."); }
+      const res = await r.json().catch(() => ({ ok: false, error: r.status === 429 ? "Muchos intentos seguidos. Espera un minuto." : "No pudimos abrir el pago en este momento." }));
+      if (r.status === 409 && res.cambio) {
+        // El envío o un precio cambió: se actualiza en pantalla y el cliente confirma de nuevo
+        if (res.envio && cotizacion.datos) { cotizacion.datos = { ...cotizacion.datos, valor: res.envio.valor }; pintarEnvio(); }
+        throw new Error(res.error);
+      }
       if (!res.ok || !res.url || !/^https:\/\/([a-z0-9-]+\.)*mercadopago\.com(\.[a-z]{2})?\//.test(res.url)) throw new Error(res.error || "No pudimos abrir el pago.");
       try { sessionStorage.setItem("ie-ultimo-pedido", JSON.stringify({ pedido: res.pedido, total: res.total })); } catch (e) {}
       window.Medicion && Medicion.evento("InitiateCheckout", { value: res.total, num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
       location.href = res.url;
     } catch (e) {
-      error.textContent = e.message + " Si sigue fallando, escríbenos por WhatsApp.";
-      if (window.turnstile && turnstileId !== null && turnstileError) { turnstileError = ""; window.turnstile.reset(turnstileId); }
+      error.innerHTML = `${escapar(e.message)} <a class="error__wa" href="${enlaceWA(textoWA)}" target="_blank" rel="noopener">Enviar este pedido por WhatsApp</a>`;
+      // Un código de Turnstile sirve una sola vez: siempre se pide uno nuevo para el siguiente intento
+      if (window.turnstile && turnstileId !== null) { turnstileError = ""; window.turnstile.reset(turnstileId); }
       boton.disabled = false; etiqueta.textContent = textoAntes;
     }
   }
+  // Si el cliente vuelve con "Atrás" desde Mercado Pago, el botón no queda bloqueado
+  addEventListener("pageshow", (e) => { if (e.persisted) { $("#boton-confirmar").disabled = false; textoConfirmar(); } });
 
   pintarPedido();
 

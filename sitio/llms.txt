@@ -8,14 +8,25 @@
 - Pagos: Mercado Pago (PSE, tarjeta, Efecty), contraentrega en Colombia; PayPal o Western Union desde el exterior.
 
 ## Productos
-- [Espuela acrílica amarilla](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-acrilica-amarilla): Translúcida, con casquillo metálico. Desde $2.900 el par.
-- [Espuela negra reforzada](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-negra-reforzada): Material reforzado, con casquillo metálico. Desde $2.900 el par.
-- [Espuela blanca enteriza](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-blanca-enteriza): Sintética de una sola pieza, sin casquillo. Desde $2.800 el par.
-- [Espuela negra enteriza](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-negra-enteriza): Reforzada de una sola pieza, sin casquillo. Desde $2.800 el par.
-- [Patapioja sintética](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-sintetica): También llamada patera, zapatola o parrilla. Desde $1.300 el par.
-- [Cera amarilla en barra](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/cera-amarilla-en-barra): Delgada o gruesa. Se vende por barra o por docena. Desde $4.167 la barra.
-- [Esparadrapo](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/esparadrapo): Rollos de 10 yardas de largo. Elige el ancho. Desde $16.000 .
-- [Patapioja metálica](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-metalica): Estándar, de torneo (más pequeña) o de realce. Desde $2.917 el par.
+- [Espuela acrílica amarilla](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-acrilica-amarilla): Translúcida, con casquillo metálico. $4.000 el par al detal; por mayor desde $3.700 (120+ pares).
+- [Espuela negra reforzada](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-negra-reforzada): Material reforzado, con casquillo metálico. $4.000 el par al detal; por mayor desde $3.700 (120+ pares).
+- [Espuela blanca enteriza](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-blanca-enteriza): Sintética de una sola pieza, sin casquillo. $3.800 el par al detal; por mayor desde $3.600 (120+ pares).
+- [Espuela negra enteriza](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/espuela-negra-enteriza): Reforzada de una sola pieza, sin casquillo. $3.800 el par al detal; por mayor desde $3.600 (120+ pares).
+- [Patapioja sintética](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-sintetica): También llamada patera, zapatola o parrilla. $2.000 el par al detal; docena a $18.000.
+- [Cera amarilla en barra](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/cera-amarilla-en-barra): Delgada o gruesa. Se vende por barra o por docena. $6.500 la barra al detal; docena desde $50.000.
+- [Esparadrapo](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/esparadrapo): Rollos de 10 yardas de largo. Elige el ancho. $16.000 al detal.
+- [Patapioja metálica](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-metalica): Estándar, de torneo (más pequeña) o de realce. $4.500 el par al detal; docena desde $35.000.
+
+## Precios de espuelas por cantidad (precio por par en bolsa; se suman todas las referencias del pedido)
+- Minorista: desde 1 pares
+- Mayorista: desde 120 pares
+- Distribuidor: desde 500 pares
+- Gran distribuidor: desde 1200 pares
+- En caja: $300 más por par. A granel: $200 menos por par.
+
+## Envíos
+- Colombia: con Interrapidísimo; el valor se calcula en la tienda según municipio y peso. Contraentrega desde $45.000 (el envío se paga por adelantado).
+- Despacho el mismo día si se paga antes de las 4:00 p.m. (sábados antes de las 10:00 a.m.).
 
 ## Políticas
 - [Cambios y devoluciones](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/devoluciones)

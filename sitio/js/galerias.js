@@ -24,7 +24,7 @@
   async function iniciarCarrusel(raiz, carpeta, descripcion) {
     if (!raiz) return;
     const fotos = await buscarFotos(carpeta);
-    if (!fotos.length) return; // queda el aviso de "aquí van tus fotos"
+    if (!fotos.length) { raiz.hidden = true; return; } // sin fotos no se muestra el carrusel
     const marco = $(".carrusel__marco", raiz), puntos = $(".carrusel__puntos", raiz);
     marco.innerHTML = `<div class="carrusel__pista">${fotos.map((f, i) =>
       `<img src="${f}" alt="${escapar(descripcion)} ${i + 1} de ${fotos.length}" ${i ? 'loading="lazy"' : ""} draggable="false">`).join("")}</div>`;
@@ -67,7 +67,10 @@
 
   if (lista) {
     if (!resenas.length) {
-      lista.innerHTML = `<p class="resenas__vacio flotante">Muy pronto publicaremos aquí capturas, audios y videos de nuestros clientes.</p>`;
+      // Sin reseñas reales todavía: se oculta la sección y su enlace del menú
+      const seccion = document.getElementById("resenas");
+      if (seccion) seccion.hidden = true;
+      document.querySelectorAll('a[href="#resenas"]').forEach((enlace) => { enlace.hidden = true; });
     } else {
       lista.innerHTML = resenas.map((r, k) => {
         if (r.tipo === "audio") return `

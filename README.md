@@ -12,4 +12,4 @@ Página de venta de espuelas, patapiojas, cera y esparadrapo, fabricados en Ibag
 - `fuente/` — código fuente de `espuela3d.min.js` y `paises.min.js`. Para recompilar: `cd fuente && npm install && npm run build`.
 
 ## Publicación
-Netlify publica la carpeta `sitio/`. Las cabeceras de seguridad están en `sitio/_headers`.
+Cloudflare (Worker con archivos estáticos, ver `wrangler.jsonc`) publica la carpeta `sitio/` y el servidor `servidor/index.js`. Las cabeceras de seguridad están en `sitio/_headers`.

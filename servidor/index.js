@@ -9,7 +9,7 @@
 
 import { Tienda } from "./catalogo.generado.js";
 
-const VERSION = "2026-10-23.1";
+const VERSION = "2026-10-23.2";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -53,7 +53,10 @@ export default {
     try {
       if (ruta === "/api/salud") return salud(url, env);
       if (ruta === "/api/mp-webhook") return await webhookMercadoPago(request, url, env, ctx);
-      if (ruta === "/api/estado" && request.method === "GET") return await estadoPago(url, env);
+      if (ruta === "/api/estado" && request.method === "GET") {
+        if (!(await dentroDelLimite(request, env, ruta))) return error("Demasiadas solicitudes", 429);
+        return await estadoPago(url, env);
+      }
       if (ruta === "/api/cotizar" || ruta === "/api/pedido") {
         if (request.method !== "POST") return error("Método no permitido", 405);
         if (!mismoOrigen(request, url)) return error("Origen no permitido", 403);
@@ -73,19 +76,26 @@ export default {
 };
 
 /* ---------------- Utilidades ---------------- */
+// Ninguna llamada externa puede dejar al cliente esperando para siempre
+const fetchT = (recurso, opciones = {}, ms = 8000) => fetch(recurso, { ...opciones, signal: AbortSignal.timeout(ms) });
 function mismoOrigen(request, url) {
   const o = request.headers.get("Origin");
   return !o || o === url.origin;
 }
 async function leerJSON(request) {
+  if (Number(request.headers.get("Content-Length") || 0) > 20000) return null;
   const texto = await request.text();
   if (texto.length > 20000) return null;
   try { return JSON.parse(texto); } catch { return null; }
 }
 async function dentroDelLimite(request, env, ruta) {
-  if (!env.LIMITE) return true;
   const ip = request.headers.get("CF-Connecting-IP") || "x";
-  try { const { success } = await env.LIMITE.limit({ key: `${ruta}:${ip}` }); return success; } catch { return true; }
+  try {
+    if (env.LIMITE && !(await env.LIMITE.limit({ key: `${ruta}:${ip}` })).success) return false;
+    // Tope total para toda la tienda (protege la cuota de Envia y Mercado Pago aunque usen muchas IP)
+    if (env.LIMITE_GLOBAL && !(await env.LIMITE_GLOBAL.limit({ key: `global:${ruta}` })).success) return false;
+  } catch { /* si el limitador falla, no se bloquea al cliente */ }
+  return true;
 }
 const texto = (v, max) => String(v ?? "").replace(/[\u0000-\u001f<>]/g, " ").trim().slice(0, max);
 const pesos = (n) => "$" + Math.round(n).toLocaleString("es-CO");
@@ -113,7 +123,7 @@ async function codigoDANE(departamento, ciudad) {
   if (!state) return null;
   const nombreCiudad = String(ciudad).replace(/,?\s*d\.?\s*c\.?\s*$/i, "").trim();
   return enCache(`dane:${state}:${normal(nombreCiudad)}`, 30 * 86400, async () => {
-    const r = await fetch("https://api.envia.com/locate", {
+    const r = await fetchT("https://api.envia.com/locate", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ city: nombreCiudad, state, country: "CO" }),
     });
@@ -150,7 +160,7 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario, contr
     };
     // Una sola transportadora (la del convenio). Con contraentrega se pide el servicio de recaudo por el valor de los productos.
     if (contraentrega) paquete.additionalServices = [{ service: "cash_on_delivery", data: { amount: Math.round(valor) } }];
-    const r = await fetch("https://api.envia.com/ship/rate/", {
+    const r = await fetchT("https://api.envia.com/ship/rate/", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` },
       body: JSON.stringify({ origin: ORIGEN, destination: destino, packages: [paquete], shipment: { type: 1, carrier: cfg.transportadora }, settings: { currency: "COP" } }),
@@ -195,7 +205,6 @@ function idPedido() {
 }
 
 async function crearPedido(cuerpo, url, env, request) {
-  if (!(await humanoVerificado(request, env, cuerpo.verificacion))) return error("No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.", 403);
   const lineas = lineasLimpias(cuerpo.pedido);
   if (!lineas) return error("El pedido no es válido. Recarga la página e intenta de nuevo.");
   const c = cuerpo.cliente || {};
@@ -211,6 +220,7 @@ async function crearPedido(cuerpo, url, env, request) {
   const contraentrega = cuerpo.pago === "contraentrega";
   const subtotal = Math.round(C.subtotal(lineas));
   if (contraentrega && subtotal < Tienda.CONTRAENTREGA_MINIMO) return error(`La contraentrega es para pedidos desde ${pesos(Tienda.CONTRAENTREGA_MINIMO)}.`);
+  if (!(await humanoVerificado(request, env, cuerpo.verificacion))) return error("No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.", 403);
 
   const envio = await fleteColombia({ lineas, departamento: cliente.departamento, ciudad: cliente.ciudad, destinatario: cliente, contraentrega }, env);
   if (!envio.ok) return error(envio.error);
@@ -227,6 +237,11 @@ async function crearPedido(cuerpo, url, env, request) {
   }
   items.push({ id: "envio", title: `Envío ${envio.transportadora} a ${envio.municipio}${contraentrega ? " (contraentrega: los productos se pagan al recibir)" : ""}`.slice(0, 250), quantity: 1, unit_price: envio.valor, currency_id: "COP" });
   const total = items.reduce((s, x) => s + x.unit_price, 0);
+  const visto = Number(cuerpo.totalVisto);
+  if (Number.isFinite(visto) && visto > 0 && Math.round(visto) !== total) {
+    return json({ ok: false, cambio: true, total, envio: { valor: envio.valor, transportadora: envio.transportadora, dias: envio.dias },
+      error: `El total se actualizó a ${pesos(total)}${contraentrega ? " (envío)" : ""}. Revísalo y vuelve a confirmar.` }, 409);
+  }
 
   const resumen = lineas.map((l) => { const d = C.describirLinea(l); return `${d.nombre}: ${d.detalle} = ${pesos(C.precioLinea(l, lineas).total)}`; });
   const ahora = new Date();
@@ -260,7 +275,7 @@ async function crearPedido(cuerpo, url, env, request) {
     },
   };
 
-  const r = await fetch("https://api.mercadopago.com/checkout/preferences", {
+  const r = await fetchT("https://api.mercadopago.com/checkout/preferences", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.MP_ACCESS_TOKEN}`, "X-Idempotency-Key": id },
     body: JSON.stringify(preferencia),
@@ -270,6 +285,9 @@ async function crearPedido(cuerpo, url, env, request) {
     console.error("Mercado Pago no creó la preferencia", r.status, JSON.stringify(d).slice(0, 500));
     return error("No pudimos abrir el pago en este momento. Intenta de nuevo o escríbenos por WhatsApp.", 502);
   }
+  if (env.PEDIDOS) {
+    await env.PEDIDOS.put(`pedido:${id}`, JSON.stringify({ id, fecha: ahora.toISOString(), estado: "creado", total, ...preferencia.metadata }), { expirationTtl: 180 * 86400 }).catch(() => {});
+  }
   return json({ ok: true, pedido: id, total, envio: { valor: envio.valor, transportadora: envio.transportadora }, url: d.init_point });
 }
 
@@ -278,7 +296,7 @@ async function firmaValida(request, url, env, dataId) {
   if (!env.MP_WEBHOOK_SECRET) return true; // sin clave: igual verificamos el pago consultando a Mercado Pago
   const firma = request.headers.get("x-signature");
   const reqId = request.headers.get("x-request-id");
-  if (!firma) return url.searchParams.has("topic"); // los avisos IPN antiguos no traen firma
+  if (!firma) return false; // con clave configurada, todo aviso debe venir firmado
   const partes = Object.fromEntries(firma.split(",").map((p) => p.split("=").map((s) => s.trim())));
   if (!partes.ts || !partes.v1) return false;
   let manifiesto = "";
@@ -301,28 +319,50 @@ async function webhookMercadoPago(request, url, env, ctx) {
   const id = String(url.searchParams.get("data.id") || url.searchParams.get("id") || (cuerpo.data && cuerpo.data.id) || "");
   if (tipo !== "payment" || !/^\d{1,20}$/.test(id)) return json({ ok: true, ignorado: true });
   if (!(await firmaValida(request, url, env, id))) return error("Firma inválida", 401);
-  ctx.waitUntil(procesarPago(id, env));
-  return json({ ok: true });
+  // Se procesa antes de responder: si algo falla, respondemos 500 y Mercado Pago vuelve a intentar
+  const listo = await procesarPago(id, env).catch((e) => { console.error("procesarPago", e && e.stack || e); return false; });
+  return listo ? json({ ok: true }) : error("Reintentar", 500);
 }
 
 async function consultarPago(id, env) {
-  const r = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
+  const r = await fetchT(`https://api.mercadopago.com/v1/payments/${id}`, { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
   return r.ok ? r.json() : null;
 }
 
+// Marcas de "ya avisado": en la base KV si existe (dura y es global); si no, en la caché (puede no existir en workers.dev)
+async function yaAvisado(env, clave) {
+  if (env.PEDIDOS) return Boolean(await env.PEDIDOS.get(clave));
+  try { return Boolean(await caches.default.match(new Request(`https://cache.interno/${clave}`))); } catch { return false; }
+}
+async function marcarAvisado(env, clave) {
+  if (env.PEDIDOS) return env.PEDIDOS.put(clave, "1", { expirationTtl: 30 * 86400 });
+  try { await caches.default.put(new Request(`https://cache.interno/${clave}`), new Response("1", { headers: { "Cache-Control": "max-age=604800" } })); } catch {}
+}
+
+// Devuelve true si terminó (avisó o no había nada que avisar) y false si hay que reintentar
 async function procesarPago(id, env) {
   const p = await consultarPago(id, env);
-  if (!p || !["approved", "pending", "in_process"].includes(p.status)) return;
+  if (!p) return false; // Mercado Pago no respondió: que reintente
+  if (!/^IE-\d{8}-[0-9A-F]{6}$/.test(p.external_reference || "")) return true; // no es un pago de la tienda
+  const avisos = { approved: 1, pending: 1, in_process: 1, refunded: 1, charged_back: 1, cancelled: 1 };
+  if (!avisos[p.status]) return true;
+  if (p.status === "cancelled" && !(await yaAvisado(env, `aviso:${id}:pending`))) return true; // solo avisa cancelación de un pendiente avisado
   // No repetir el mismo aviso
-  const marca = new Request(`https://cache.interno/aviso/${id}/${p.status}`);
-  if (await caches.default.match(marca)) return;
-  await caches.default.put(marca, new Response("1", { headers: { "Cache-Control": "max-age=604800" } }));
+  const clave = `aviso:${id}:${p.status}`;
+  if (await yaAvisado(env, clave)) return true;
 
   const m = p.metadata || {};
   const aprobado = p.status === "approved";
   const medio = { pse: "PSE", efecty: "Efecty", account_money: "Dinero en Mercado Pago" }[p.payment_method_id] || p.payment_type_id || p.payment_method_id || "";
+  const titulos = {
+    approved: "✅ <b>PAGO APROBADO</b>", pending: "⏳ <b>PAGO PENDIENTE</b> (aún no ha pagado; por ejemplo Efecty sin pagar)",
+    in_process: "⏳ <b>PAGO EN REVISIÓN</b> (Mercado Pago lo está revisando; no despaches todavía)",
+    refunded: "↩️ <b>PAGO DEVUELTO</b> (no despaches; si ya despachaste, revisa con el cliente)",
+    charged_back: "⚠️ <b>CONTRACARGO</b> (el cliente desconoció el pago ante el banco; revisa en Mercado Pago)",
+    cancelled: "❌ <b>PAGO CANCELADO</b> (venció o se canceló; no despaches)",
+  };
   const lineas = [
-    aprobado ? "✅ <b>PAGO APROBADO</b>" : "⏳ <b>PAGO PENDIENTE</b> (aún no ha pagado; por ejemplo Efecty sin pagar)",
+    titulos[p.status],
     `Pedido: <b>${esc(m.pedido || p.external_reference)}</b>${p.live_mode === false ? " · PRUEBA" : ""}`,
     `Pagado: <b>${pesos(p.transaction_amount)}</b> por ${esc(medio)}`,
     m.tipo === "contraentrega" ? `💵 <b>CONTRAENTREGA</b>: la transportadora cobra ${pesos(m.cobrar_al_recibir)} al entregar (el envío ya está pagado, incluye recaudo de ${pesos(m.envio_recaudo || 0)})` : "",
@@ -338,13 +378,19 @@ async function procesarPago(id, env) {
     "",
     aprobado ? `👉 Siguiente paso: genera la guía en Envia con ${esc(Tienda.ENVIO_NACIONAL.transportadora)}${m.tipo === "contraentrega" ? ` <b>con contraentrega por ${pesos(m.cobrar_al_recibir)}</b>` : ""}, despacha y envíale la guía al cliente por WhatsApp.` : "",
   ].filter((x) => x !== "").join("\n");
-  await telegram(env, lineas);
+  if (!(await telegram(env, lineas))) return false; // Telegram falló: que Mercado Pago reintente
+  await marcarAvisado(env, clave);
+  if (env.PEDIDOS && m.pedido) {
+    const previo = JSON.parse((await env.PEDIDOS.get(`pedido:${m.pedido}`)) || "{}");
+    await env.PEDIDOS.put(`pedido:${m.pedido}`, JSON.stringify({ ...previo, estado: p.status, pago: p.id, medio, pagado: p.transaction_amount, actualizado: new Date().toISOString() }), { expirationTtl: 180 * 86400 });
+  }
+  return true;
 }
 
 async function telegram(env, mensaje) {
   const token = String(env.TELEGRAM_TOKEN || "").trim().replace(/^bot/i, "");
   if (!token || !env.TELEGRAM_CHAT_ID) return false;
-  const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+  const r = await fetchT(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: mensaje, parse_mode: "HTML", disable_web_page_preview: true }),
   });
@@ -359,7 +405,7 @@ async function estadoPago(url, env) {
   const orden = url.searchParams.get("orden") || "";
   // Si Mercado Pago no devolvió el número de pago, se busca en la orden
   if (!/^\d{1,20}$/.test(id) && /^\d{1,20}$/.test(orden)) {
-    const r = await fetch(`https://api.mercadopago.com/merchant_orders/${orden}`, { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
+    const r = await fetchT(`https://api.mercadopago.com/merchant_orders/${orden}`, { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
     const o = r.ok ? await r.json() : null;
     const pagos = (o && o.payments) || [];
     const elegido = pagos.find((x) => x.status === "approved") || pagos[pagos.length - 1];
@@ -370,7 +416,10 @@ async function estadoPago(url, env) {
   if (!p) { console.log("estado: pago no encontrado", id); return error("No encontramos ese pago", 404); }
   const propio = /^IE-\d{8}-[0-9A-F]{6}$/.test(p.external_reference || "");
   if (!propio || (ref && ref !== p.external_reference)) { console.log("estado: referencia distinta", id, ref, p.external_reference); return error("No encontramos ese pago", 404); }
-  return json({ ok: true, estado: p.status, pedido: p.external_reference, total: p.transaction_amount, medio: p.payment_method_id, contraentrega: (p.metadata || {}).tipo === "contraentrega" });
+  const m = p.metadata || {};
+  const base = { ok: true, estado: p.status, medio: p.payment_method_id, contraentrega: m.tipo === "contraentrega" };
+  if (!ref) return json(base); // sin número de pedido no se muestran montos
+  return json({ ...base, pedido: p.external_reference, total: p.transaction_amount, valorPedido: Number(m.subtotal_productos || 0) + Number(m.envio_valor || 0) || p.transaction_amount });
 }
 
 /* ---------------- Turnstile (protección contra robots) ---------------- */
@@ -383,7 +432,7 @@ async function humanoVerificado(request, env, token) {
   datos.append("response", token);
   const ip = request.headers.get("CF-Connecting-IP");
   if (ip) datos.append("remoteip", ip);
-  const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: datos });
+  const r = await fetchT("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: datos });
   const d = await r.json().catch(() => ({}));
   return Boolean(d.success);
 }
@@ -391,7 +440,9 @@ async function humanoVerificado(request, env, token) {
 /* ---------------- Salud ---------------- */
 async function salud(url, env) {
   const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TURNSTILE_SECRET"];
-  const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
+  // Sin la clave privada (SALUD_CLAVE) solo se muestra que está en línea
+  if (!env.SALUD_CLAVE || url.searchParams.get("clave") !== env.SALUD_CLAVE) return json({ ok: true, version: VERSION });
+  const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, base: Boolean(env.PEDIDOS), secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
   if (url.searchParams.get("revisar") === "1") respuesta.conexiones = await revisarConexiones(env);
   return json(respuesta);
 }
@@ -400,18 +451,18 @@ async function revisarConexiones(env) {
   const probar = async (fn) => { try { return await fn(); } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 120) }; } };
   const [mercadoPago, telegramOk, envia] = await Promise.all([
     probar(async () => {
-      const r = await fetch("https://api.mercadopago.com/users/me", { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
+      const r = await fetchT("https://api.mercadopago.com/users/me", { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
       const d = await r.json();
       return { ok: r.ok, pais: d.site_id, cuentaDePrueba: Array.isArray(d.tags) ? d.tags.includes("test_user") : undefined };
     }),
     probar(async () => {
       const t = String(env.TELEGRAM_TOKEN || "").trim().replace(/^bot/i, "");
-      const r = await fetch(`https://api.telegram.org/bot${t}/getMe`);
+      const r = await fetchT(`https://api.telegram.org/bot${t}/getMe`);
       const d = await r.json();
       return { ok: Boolean(d.ok), bot: d.result && d.result.username, error: d.ok ? undefined : d.description };
     }),
     probar(async () => {
-      const r = await fetch("https://queries.envia.com/carrier?country_code=CO", { headers: { Authorization: `Bearer ${env.ENVIA_TOKEN}` } });
+      const r = await fetchT("https://queries.envia.com/carrier?country_code=CO", { headers: { Authorization: `Bearer ${env.ENVIA_TOKEN}` } });
       return { ok: r.ok, estado: r.status };
     }),
   ]);
