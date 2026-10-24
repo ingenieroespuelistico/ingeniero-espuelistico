@@ -18,6 +18,8 @@
   },
   // No borrar las variables que se agreguen en el panel de Cloudflare al publicar desde GitHub
   "kv_namespaces": [{ "binding": "PEDIDOS", "id": "f0afa9fa377c4c6fae242f1f57aac709" }],
+  // Tarea programada: revisa carritos sin pagar cada 20 minutos
+  "triggers": { "crons": ["*/20 * * * *"] },
   "keep_vars": true,
   // Datos NO secretos (los tokens van como "Secret" en el panel de Cloudflare, nunca aquí)
   "vars": {

@@ -6,10 +6,12 @@
 //   POST /api/mp-webhook   → aviso de Mercado Pago cuando cambia un pago → mensaje a Telegram
 //   GET  /api/estado       → estado de un pago (para la página de "gracias")
 //   GET  /api/salud        → revisa que los secretos estén guardados
+//   Tarea programada (cada 20 min) → avisa por Telegram los carritos que quedaron sin pagar
 
 import { Tienda } from "./catalogo.generado.js";
+import { registrarPedidoWeb, registrarPago, revisarAbandonados } from "./pedidos.js";
 
-const VERSION = "2026-10-23.3";
+const VERSION = "2026-10-23.4";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -72,6 +74,12 @@ export default {
       console.error("Error en", ruta, e && e.stack || e);
       return error("Tuvimos un problema. Intenta de nuevo o escríbenos por WhatsApp.", 500);
     }
+  },
+  // Tarea programada (ver "triggers" en wrangler.jsonc)
+  async scheduled(evento, env, ctx) {
+    ctx.waitUntil(revisarAbandonados(env, (mensaje, silencioso) => telegram(env, mensaje, silencioso))
+      .then((r) => console.log("carritos abiertos", JSON.stringify(r)))
+      .catch((e) => console.error("revisarAbandonados", e && e.stack || e)));
   },
 };
 
@@ -286,7 +294,15 @@ async function crearPedido(cuerpo, url, env, request) {
     return error("No pudimos abrir el pago en este momento. Intenta de nuevo o escríbenos por WhatsApp.", 502);
   }
   if (env.PEDIDOS) {
-    await env.PEDIDOS.put(`pedido:${id}`, JSON.stringify({ id, fecha: ahora.toISOString(), estado: "creado", total, ...preferencia.metadata }), { expirationTtl: 180 * 86400 }).catch(() => {});
+    await registrarPedidoWeb(env, {
+      id, fecha: ahora.toISOString(), canal: "web", etapa: "por_pagar", tipo: preferencia.metadata.tipo,
+      total, valorPedido: subtotal + envio.valor, subtotal, cobrarAlRecibir: contraentrega ? subtotal : 0,
+      lineas, productos: resumen, regalo: preferencia.metadata.regalo,
+      envio: { valor: envio.valor, transportadora: envio.transportadora, servicio: envio.servicio, dias: envio.dias, pesoKg: envio.pesoKg, recaudo: envio.recaudo || 0 },
+      cliente: { ...cliente, pais: "CO", destino: preferencia.metadata.destino },
+      pagoUrl: d.init_point, pagoVence: preferencia.expiration_date_to,
+      pagos: [], historial: [{ fecha: ahora.toISOString(), texto: "Pedido creado en la página; enviado a Mercado Pago" }],
+    }).catch((e) => console.error("KV pedido", e && e.message));
   }
   return json({ ok: true, pedido: id, total, envio: { valor: envio.valor, transportadora: envio.transportadora }, url: d.init_point });
 }
@@ -344,6 +360,8 @@ async function procesarPago(id, env) {
   const p = await consultarPago(id, env);
   if (!p) return false; // Mercado Pago no respondió: que reintente
   if (!/^IE-\d{8}-[0-9A-F]{6}$/.test(p.external_reference || "")) return true; // no es un pago de la tienda
+  // Base de pedidos: guarda el pago en el pedido y en la ficha del cliente (si falla, Mercado Pago reintenta)
+  if (env.PEDIDOS) await registrarPago(env, p);
   const avisos = { approved: 1, pending: 1, in_process: 1, refunded: 1, charged_back: 1, cancelled: 1 };
   if (!avisos[p.status]) return true;
   if (p.status === "cancelled" && !(await yaAvisado(env, `aviso:${id}:pending`))) return true; // solo avisa cancelación de un pendiente avisado
@@ -365,10 +383,10 @@ async function procesarPago(id, env) {
     titulos[p.status],
     `Pedido: <b>${esc(m.pedido || p.external_reference)}</b>${p.live_mode === false ? " · PRUEBA" : ""}`,
     `Pagado: <b>${pesos(p.transaction_amount)}</b> por ${esc(medio)}`,
-    m.tipo === "contraentrega" ? `💵 <b>CONTRAENTREGA</b>: la transportadora cobra ${pesos(m.cobrar_al_recibir)} al entregar (el envío ya está pagado, incluye recaudo de ${pesos(m.envio_recaudo || 0)})` : "",
+    m.tipo === "contraentrega" ? `💵 <b>CONTRAENTREGA</b>: la transportadora cobra ${pesos(m.cobrar_al_recibir)} al entregar (el envío ya está pagado, incluye recaudo de ${pesos(m.envio_recaudo || 0)})` : null,
     "",
     `<b>Productos</b>\n${esc(String(m.productos || "").split(" | ").map((x) => "• " + x).join("\n"))}`,
-    m.regalo ? `🎁 Regalo: ${esc(m.regalo)}` : "",
+    m.regalo ? `🎁 Regalo: ${esc(m.regalo)}` : null,
     `🚚 Envío: ${esc(m.envio)} (${pesos(m.envio_valor || 0)}, ${esc(m.envio_peso_kg)} kg)`,
     "",
     `<b>Cliente</b>: ${esc(m.cliente_nombre)} · CC ${esc(m.cliente_documento)}`,
@@ -376,23 +394,19 @@ async function procesarPago(id, env) {
     `📍 ${esc(m.destino)}`,
     `Pago Mercado Pago #${esc(p.id)}`,
     "",
-    aprobado ? `👉 Siguiente paso: genera la guía en Envia con ${esc(Tienda.ENVIO_NACIONAL.transportadora)}${m.tipo === "contraentrega" ? ` <b>con contraentrega por ${pesos(m.cobrar_al_recibir)}</b>` : ""}, despacha y envíale la guía al cliente por WhatsApp.` : "",
-  ].filter((x) => x !== "").join("\n");
+    aprobado ? `👉 Siguiente paso: genera la guía en Envia con ${esc(Tienda.ENVIO_NACIONAL.transportadora)}${m.tipo === "contraentrega" ? ` <b>con contraentrega por ${pesos(m.cobrar_al_recibir)}</b>` : ""}, despacha y envíale la guía al cliente por WhatsApp.` : null,
+  ].filter((x) => x !== null).join("\n");
   if (!(await telegram(env, lineas))) return false; // Telegram falló: que Mercado Pago reintente
   await marcarAvisado(env, clave);
-  if (env.PEDIDOS && m.pedido) {
-    const previo = JSON.parse((await env.PEDIDOS.get(`pedido:${m.pedido}`)) || "{}");
-    await env.PEDIDOS.put(`pedido:${m.pedido}`, JSON.stringify({ ...previo, estado: p.status, pago: p.id, medio, pagado: p.transaction_amount, actualizado: new Date().toISOString() }), { expirationTtl: 180 * 86400 });
-  }
   return true;
 }
 
-async function telegram(env, mensaje) {
+async function telegram(env, mensaje, silencioso = false) {
   const token = String(env.TELEGRAM_TOKEN || "").trim().replace(/^bot/i, "");
   if (!token || !env.TELEGRAM_CHAT_ID) return false;
   const r = await fetchT(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: mensaje, parse_mode: "HTML", disable_web_page_preview: true }),
+    body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: mensaje, parse_mode: "HTML", disable_web_page_preview: true, disable_notification: Boolean(silencioso) }),
   });
   if (!r.ok) console.error("Telegram", r.status, (await r.text()).slice(0, 300));
   return r.ok;
