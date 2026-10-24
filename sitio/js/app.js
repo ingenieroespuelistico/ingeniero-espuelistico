@@ -567,8 +567,9 @@
     if (!NEGOCIO.turnstile) return "";
     await prepararTurnstile();
     if (!window.turnstile || turnstileId === null) return "";
-    for (let i = 0; i < 40; i++) { const t = window.turnstile.getResponse(turnstileId); if (t) return t; await new Promise((r) => setTimeout(r, 250)); }
-    return "";
+    for (let i = 0; i < 24; i++) { const t = window.turnstile.getResponse(turnstileId); if (t) return t; await new Promise((r) => setTimeout(r, 250)); }
+    // Si Cloudflare pidió marcar la casilla, se le avisa al cliente en vez de enviar sin verificación
+    throw new Error("Marca la casilla «Verifique que es un ser humano» que aparece arriba del botón y vuelve a confirmar.");
   }
   $$("#abrir-pedido, [data-abrir-carrito]").forEach((b) => b.addEventListener("click", () => setTimeout(prepararTurnstile, 0)));
 
@@ -593,7 +594,7 @@
       location.href = res.url;
     } catch (e) {
       error.textContent = e.message + " Si sigue fallando, escríbenos por WhatsApp.";
-      if (window.turnstile && turnstileId !== null) window.turnstile.reset(turnstileId);
+      if (window.turnstile && turnstileId !== null && !/Marca la casilla/.test(e.message)) window.turnstile.reset(turnstileId);
       boton.disabled = false; etiqueta.textContent = textoAntes;
     }
   }
