@@ -23,7 +23,7 @@ import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-23.9";
+const VERSION = "2026-10-23.10";
 const C = Tienda.Calculo;
 
 const CABECERAS = {

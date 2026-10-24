@@ -546,7 +546,7 @@ const PREGUNTAS = [
   },
   {
     pregunta: "¿Puedo devolver o cambiar un producto?",
-    respuesta: "Sí, si la espuela no se ha usado ni calzado. Si te enviamos una medida o referencia equivocada, o un lote sale defectuoso (avísanos en los 15 días siguientes), te cambiamos el producto o te devolvemos el dinero. Lee la política completa en Cambios y devoluciones.",
+    respuesta: "Sí. Tienes 5 días hábiles desde la entrega para retractarte, con el producto sin usar y en su empaque, y te devolvemos el dinero en máximo 15 días. Si un producto llega con defecto de fábrica, avísanos dentro de los 15 días siguientes a la entrega y te lo cambiamos o te devolvemos el dinero, con el envío a nuestro cargo. Si el error fue nuestro (medida o referencia equivocada), también pagamos los envíos. Lee la política completa en Cambios, devoluciones y garantía.",
     enlace: { texto: "Ver política de cambios y devoluciones", url: "devoluciones.html" },
   },
   {

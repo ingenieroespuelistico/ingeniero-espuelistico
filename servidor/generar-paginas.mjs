@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSy
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Tienda } from "./catalogo.generado.js";
+import { paginasSEO } from "./contenido-seo.mjs";
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sitio = join(raiz, "sitio");
@@ -120,13 +121,16 @@ const FUENTE = `<link rel="preload" href="/fuentes/archivo.woff2" as="font" type
 const CABECERA = `<header class="cabecera">
   <div class="contenedor cabecera__fila">
     <a class="marca" href="/"><span class="marca__nombre">Ingeniero<br>Espuelístico</span></a>
-    <nav class="pp-nav" aria-label="Principal"><a href="/#catalogo">Catálogo</a><a href="/#precios">Precios</a><a href="/#preguntas">Preguntas</a></nav>
+    <nav class="pp-nav" aria-label="Principal"><a href="/#catalogo">Catálogo</a><a href="/espuelas-por-mayor">Por mayor</a><a href="/guias/medidas-de-espuelas">Medidas</a><a href="/#preguntas">Preguntas</a></nav>
   </div>
 </header>`;
 function enlacesProductos(actual) {
   return Tienda.PRODUCTOS.filter((p) => !p.sinPrecio).map((p) => p.id === actual ? "" :
     `<li><a href="${urlProducto(p)}">${esc(p.nombre)}</a></li>`).join("");
 }
+// Enlaces a las guías (pie de todas las páginas)
+const GUIAS_ENLACES = [["/espuelas-por-mayor", "Espuelas por mayor"], ["/guias/medidas-de-espuelas", "Medidas de espuelas"], ["/guias/espuela-con-casquillo-o-enteriza", "Casquillo o enteriza"], ["/accesorios-para-gallos", "Accesorios para gallos"], ["/envios-internacionales", "Envíos internacionales"]];
+const GUIAS_PIE = `<ul class="pie__lista">${GUIAS_ENLACES.map(([r, t]) => `<li><a href="${r}">${t}</a></li>`).join("")}</ul>`;
 const CREDITO = `<p class="pie__credito">Página hecha por <strong>DSCH Marketing</strong> en convenio con Ingeniero Espuelístico. Si desea que impulsemos su negocio, escriba al Ingeniero Espuelístico y con gusto lo redirigirán a nosotros.</p>`;
 function pie() {
   return `<footer class="pie">
@@ -137,6 +141,7 @@ function pie() {
       <p><a href="https://wa.me/${N.whatsapp}" target="_blank" rel="noopener">WhatsApp ${esc(N.telefonoVisible)}</a></p>
     </div>
     <div><p class="pie__titulo">Productos</p><ul class="pie__lista">${enlacesProductos()}</ul></div>
+    <div><p class="pie__titulo">Guías</p>${GUIAS_PIE}</div>
     <div>
       <p><a href="/devoluciones">Cambios y devoluciones</a></p>
       <p><a href="/terminos">Términos y condiciones</a></p>
@@ -252,6 +257,68 @@ ${pie()}
   writeFileSync(join(directorio, `${(p.slug || slug(p.nombre))}.html`), html);
 }
 
+/* ---------- 4b. Guías y páginas de compra (contenido para Google y asistentes de IA) ---------- */
+const PAGINAS_SEO = paginasSEO(Tienda, { esc, pesos, urlProducto });
+const dirGuias = join(sitio, "guias");
+if (existsSync(dirGuias)) rmSync(dirGuias, { recursive: true });
+mkdirSync(dirGuias);
+const fechaSEO = fechaDe("servidor/contenido-seo.mjs", "sitio/js/precios.js");
+for (const g of PAGINAS_SEO) {
+  const esGuia = g.tipo === "guia";
+  const migasLista = [{ n: "Inicio", r: "/" }, ...(esGuia ? [{ n: "Guías", r: "/guias/medidas-de-espuelas" }] : []), { n: g.miga, r: g.ruta }];
+  const datos = [
+    { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: migasLista.map((m, i) => ({ "@type": "ListItem", position: i + 1, name: m.n, item: absoluta(m.r) })) },
+    ...(esGuia ? [{
+      "@context": "https://schema.org", "@type": "Article", headline: g.h1, description: g.descripcion, inLanguage: "es-CO",
+      mainEntityOfPage: absoluta(g.ruta), datePublished: "2026-10-23", dateModified: fechaSEO,
+      author: { "@type": "Organization", name: "Ingeniero Espuelístico", url: absoluta("/") },
+      publisher: { "@type": "Organization", name: "Ingeniero Espuelístico", logo: { "@type": "ImageObject", url: absoluta("/icono-512.png") } },
+    }] : []),
+    ...(g.preguntas && g.preguntas.length ? [{ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: g.preguntas.map((q) => ({ "@type": "Question", name: q.pregunta, acceptedAnswer: { "@type": "Answer", text: q.respuesta } })) }] : []),
+  ];
+  const cuerpo = g.cuerpo.replace(/<table class="pp-tabla([^"]*)">([\s\S]*?)<\/table>/g, (_, c, t) => `<div class="pp-tabla-caja"><table class="pp-tabla${c}">${t}</table></div>`);
+  const otras = GUIAS_ENLACES.filter(([r]) => r !== g.ruta).map(([r, t]) => `<li><a href="${r}">${t}</a></li>`).join("");
+  const html = `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="only light">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(g.titulo)}</title>
+<meta name="description" content="${esc(g.descripcion)}">
+<link rel="canonical" href="${absoluta(g.ruta)}">
+<meta property="og:type" content="${esGuia ? "article" : "website"}">
+<meta property="og:title" content="${esc(g.h1)}">
+<meta property="og:description" content="${esc(g.descripcion)}">
+<meta property="og:url" content="${absoluta(g.ruta)}">
+<meta property="og:locale" content="es_CO">
+<link rel="icon" href="/icono.svg" type="image/svg+xml">
+${FUENTE}
+<link rel="stylesheet" href="/css/estilos.css?v=13">
+<link rel="stylesheet" href="/css/secciones.css?v=13">
+${datos.map(ld).join("\n")}
+</head>
+<body class="pagina-producto pagina-guia">
+${CABECERA}
+<main class="contenedor pp guia">
+  <nav class="pp-migas" aria-label="Ruta">${migasLista.map((m, i) => (i === migasLista.length - 1 ? `<span aria-current="page">${esc(m.n)}</span>` : `<a href="${m.r}">${esc(m.n)}</a>`)).join(" › ")}</nav>
+  <h1>${esc(g.h1)}</h1>
+  ${esGuia ? `<p class="guia__autor">Por el taller de Ingeniero Espuelístico, fabricantes en Ibagué desde hace más de 25 años · Actualizado: ${new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "long", year: "numeric" }).format(new Date(fechaSEO + "T12:00:00Z"))}</p>` : ""}
+${cuerpo}
+  ${g.preguntas && g.preguntas.length ? `<section class="pp-seccion"><h2>Preguntas frecuentes</h2>${g.preguntas.map((q) => `<details class="pregunta"><summary>${esc(q.pregunta)}</summary><p>${esc(q.respuesta)}</p></details>`).join("")}</section>` : ""}
+  <section class="pp-seccion"><h2>Sigue leyendo</h2><ul class="pp-relacionados">${otras}</ul></section>
+  <section class="pp-seccion"><h2>Productos</h2><ul class="pp-relacionados">${enlacesProductos()}</ul></section>
+</main>
+${pie()}
+<script src="/js/medicion.js?v=13" defer></script>
+</body>
+</html>
+`;
+  const destino = join(sitio, g.ruta.slice(1) + ".html");
+  mkdirSync(dirname(destino), { recursive: true });
+  writeFileSync(destino, html);
+}
+
 /* ---------- 5. index.html: datos estructurados, canónico y enlaces ---------- */
 const DIAS = { "Lun a vie": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], "Sáb": ["Saturday"] };
 const tienda = {
@@ -321,9 +388,10 @@ for (const n of ["privacidad", "terminos", "devoluciones", "pqr"]) {
 }
 
 /* ---------- 6. sitemap.xml, robots.txt, llms.txt ---------- */
-const paginas = ["/", ...productos.map(urlProducto), "/devoluciones", "/terminos", "/privacidad"];
+const paginas = ["/", ...productos.map(urlProducto), ...PAGINAS_SEO.map((g) => g.ruta), "/devoluciones", "/terminos", "/privacidad"];
 const fechaPagina = { "/": fechaDe("sitio/index.html", "sitio/js/precios.js"), "/devoluciones": fechaDe("sitio/devoluciones.html"), "/terminos": fechaDe("sitio/terminos.html"), "/privacidad": fechaDe("sitio/privacidad.html") };
 for (const p of productos) fechaPagina[urlProducto(p)] = fechaDe("sitio/js/precios.js", "sitio/js/productos", `sitio/fotos/${p.id}`);
+for (const g of PAGINAS_SEO) fechaPagina[g.ruta] = fechaSEO;
 writeFileSync(join(sitio, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${paginas.map((r) => `  <url><loc>${absoluta(r)}</loc><lastmod>${fechaPagina[r] || hoy}</lastmod></url>`).join("\n")}
@@ -357,9 +425,17 @@ ${Tienda.NIVELES.map((n, i) => `- ${n.nombre}: desde ${n.desde} pares`).join("\n
 - Colombia: con Interrapidísimo; el valor se calcula en la tienda según municipio y peso. Contraentrega desde ${pesos(Tienda.CONTRAENTREGA_MINIMO)} (el envío se paga por adelantado).
 - Despacho el mismo día si se paga antes de las 4:00 p.m. (sábados antes de las 10:00 a.m.).
 
+## Guías
+${PAGINAS_SEO.map((g) => `- [${g.h1}](${absoluta(g.ruta)}): ${g.descripcion}`).join("\n")}
+
+## Medidas
+- Una línea es un milímetro, medido desde la base del casquillo hasta la punta de la espiga.
+${Object.entries(Tienda.PULGADAS).map(([l, pul]) => `- ${l} líneas = ${l} mm ≈ ${pul}" (pulgadas)`).join("\n")}
+
 ## Políticas
-- [Cambios y devoluciones](${absoluta("/devoluciones")})
+- [Cambios, devoluciones y garantía](${absoluta("/devoluciones")}): retracto de 5 días hábiles desde la entrega; garantía por defectos de fabricación.
 - [Términos y condiciones](${absoluta("/terminos")})
 - [Privacidad](${absoluta("/privacidad")})
+- [Peticiones, quejas y reclamos](${absoluta("/pqr")})
 `);
 console.log(`Páginas generadas: ${productos.length} productos, ${Object.keys(FOTOS).length} carpetas con fotos, sitemap con ${paginas.length} direcciones.`);

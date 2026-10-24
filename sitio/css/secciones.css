@@ -438,3 +438,14 @@ input, select, textarea { background-color: #fff; color: #142033; }
 .gracias__resumen p { margin: 6px 0; }
 .gracias__nota { font-size: .88rem; color: var(--tinta-suave); }
 @media print { .cabecera, .gracias__botones, .aviso-medicion, #imprimir { display: none !important; } }
+
+/* ----- Guías y páginas de compra ----- */
+.pp-tabla-caja { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pp-tabla-caja .pp-tabla--ancha { min-width: 560px; }
+.guia h1 { margin: 8px 0 6px; }
+.guia__autor { color: var(--tinta-suave); font-size: .9rem; margin: 0 0 14px; }
+.guia__entrada { font-size: 1.08rem; line-height: 1.6; max-width: 760px; }
+.guia .pp-seccion p, .guia .pp-seccion li { max-width: 760px; }
+.guia .pp-seccion ol, .guia .pp-seccion ul:not(.pp-relacionados) { padding-left: 22px; display: grid; gap: 6px; }
+.pp-tabla--comparar td, .pp-tabla--comparar th { font-size: .92rem; }
+@media (max-width: 600px) { .pp-tabla-caja:has(.pp-tabla--ancha)::before { content: "Desliza la tabla para ver todas las columnas →"; display: block; font-size: .8rem; color: var(--tinta-suave); margin-bottom: 4px; } }
