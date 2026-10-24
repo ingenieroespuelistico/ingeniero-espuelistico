@@ -8,6 +8,8 @@ const NEGOCIO = {
   facebook: "https://www.facebook.com/share/1Ff8Y8L43E/",
   contraentregaMinimo: CONTRAENTREGA_MINIMO,
   correo: "ingenieroespuelistico@gmail.com",
+  titular: "Brayner Alexander Jiménez Muñoz",   // persona natural responsable de la tienda (sale en los correos y páginas legales)
+  documentoTitular: "C.C. 1.104.938.233",
   // Dirección pública de la página. Cuando compres el dominio, cámbiala aquí (por ejemplo "https://ingenieroespuelistico.com")
   sitio: "https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev",
   direccion: { calle: "Transversal 11 Sur # 13-65, casa 28", ciudad: "Ibagué", departamento: "Tolima", pais: "CO" },

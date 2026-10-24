@@ -19,8 +19,9 @@ import { registrarPedidoWeb, registrarPago, revisarAbandonados } from "./pedidos
 import { paypalListo, crearOrden, capturarOrden, consultarOrden, ESTADO_PAYPAL } from "./paypal.js";
 import { atenderAdmin, resumenDiario } from "./admin.js";
 import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario.js";
+import { enviarConfirmacion, correoValido } from "./correo.js";
 
-const VERSION = "2026-10-23.7";
+const VERSION = "2026-10-23.8";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -255,6 +256,7 @@ async function crearPedido(cuerpo, url, env, request) {
     nombre: texto(c.nombre, 80), documento: texto(c.documento, 20).replace(/[^0-9A-Za-z-]/g, ""),
     celular: texto(c.celular, 20).replace(/[^\d+]/g, ""), departamento: texto(c.departamento, 80),
     ciudad: texto(c.ciudad, 80), direccion: texto(c.direccion, 150),
+    correo: correoValido(texto(c.correo, 120)) ? texto(c.correo, 120).toLowerCase() : "",
   };
   if (!cliente.nombre || !cliente.documento || cliente.celular.length < 10 || !cliente.departamento || !cliente.ciudad || !cliente.direccion) {
     return error("Faltan datos de envío. Revisa nombre, documento, celular, municipio y dirección.");
@@ -292,6 +294,7 @@ async function crearPedido(cuerpo, url, env, request) {
     items,
     payer: {
       name: cliente.nombre,
+      ...(cliente.correo ? { email: cliente.correo } : {}),
       phone: { area_code: "57", number: cliente.celular.replace(/^\+?57/, "") },
       identification: { type: "CC", number: cliente.documento },
       address: { street_name: cliente.direccion.slice(0, 100) },
@@ -396,7 +399,9 @@ async function procesarPago(id, env) {
   if (!p) return false; // Mercado Pago no respondió: que reintente
   if (!/^IE-\d{8}-[0-9A-F]{6}$/.test(p.external_reference || "")) return true; // no es un pago de la tienda
   // Base de pedidos: guarda el pago en el pedido y en la ficha del cliente (si falla, Mercado Pago reintenta)
-  if (env.PEDIDOS) await registrarPago(env, p);
+  const pedido = env.PEDIDOS ? await registrarPago(env, p) : null;
+  // Correo de confirmación al cliente (si dejó su correo y el envío de correos está configurado; una sola vez)
+  if (p.status === "approved" && pedido) await enviarConfirmacion(env, pedido, Tienda.NEGOCIO);
   const avisos = { approved: 1, pending: 1, in_process: 1, refunded: 1, charged_back: 1, cancelled: 1 };
   if (!avisos[p.status]) return true;
   if (p.status === "cancelled" && !(await yaAvisado(env, `aviso:${id}:pending`))) return true; // solo avisa cancelación de un pendiente avisado
@@ -473,6 +478,7 @@ async function crearPedidoPaypal(cuerpo, url, env, request) {
     nombre: texto(c.nombre, 80), documento: texto(c.documento, 20).replace(/[^0-9A-Za-z-]/g, ""),
     celular: texto(c.celular, 20).replace(/[^\d+]/g, ""), pais: texto(c.pais, 2).toUpperCase(),
     departamento: texto(c.region, 80), ciudad: texto(c.ciudad, 80), direccion: texto(c.direccion, 150),
+    correo: correoValido(texto(c.correo, 120)) ? texto(c.correo, 120).toLowerCase() : "",
   };
   if (!/^[A-Z]{2}$/.test(cliente.pais) || cliente.pais === "CO") return error("Elige tu país.");
   if ((Tienda.NEGOCIO.paisesSinEnvio || {})[cliente.pais]) return error("No enviamos a ese país por restricciones de importación.");
@@ -523,6 +529,7 @@ async function registrarPagoPaypal(env, r) {
     live_mode: String(env.PAYPAL_MODO || "").toLowerCase() === "live",
   };
   const p = env.PEDIDOS ? await registrarPago(env, pagoMP) : null;
+  if (estado === "approved" && p) await enviarConfirmacion(env, p, Tienda.NEGOCIO);
   if (!["approved", "pending"].includes(estado)) return estado;
   const clave = `aviso:pp:${pagoMP.id}:${estado}`;
   if (await yaAvisado(env, clave)) return estado;
@@ -670,7 +677,7 @@ async function humanoVerificado(request, env, token) {
 
 /* ---------------- Salud ---------------- */
 async function salud(url, env) {
-  const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TURNSTILE_SECRET", "PAYPAL_CLIENT_ID", "PAYPAL_SECRET", "ADMIN_CLAVE", "GOOGLE_CUENTA_SERVICIO"];
+  const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TURNSTILE_SECRET", "PAYPAL_CLIENT_ID", "PAYPAL_SECRET", "ADMIN_CLAVE", "GOOGLE_CUENTA_SERVICIO", "RESEND_API_KEY", "CORREO_REMITENTE"];
   // Sin la clave privada (SALUD_CLAVE) solo se muestra que está en línea
   if (!env.SALUD_CLAVE || url.searchParams.get("clave") !== env.SALUD_CLAVE) return json({ ok: true, version: VERSION });
   const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, base: Boolean(env.PEDIDOS), secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };

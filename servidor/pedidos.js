@@ -118,7 +118,7 @@ export async function registrarCliente(env, p) {
   const clave = `cliente:${cel}`;
   const c = (await leer(env, clave)) || { celular: cel, alta: p.fecha, pedidos: [], compras: 0, comprado: 0, notas: [] };
   if (c.pedidos.includes(p.id)) return c; // esta compra ya se contó
-  for (const k of ["nombre", "documento", "departamento", "ciudad", "direccion", "destino", "pais"]) if (c0[k]) c[k] = c0[k];
+  for (const k of ["nombre", "documento", "departamento", "ciudad", "direccion", "destino", "pais", "correo"]) if (c0[k]) c[k] = c0[k];
   c.pedidos.unshift(p.id);
   c.pedidos = c.pedidos.slice(0, 300);
   c.compras = (c.compras || 0) + 1;

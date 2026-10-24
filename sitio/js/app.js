@@ -572,6 +572,8 @@
     if (!cel.ok) return fallar(cel.mensaje, $("#campo-celular"));
     if (u && !u.region()) return fallar("Elige tu departamento, provincia o estado.", $("#campo-region"));
     if (u && !u.ciudad()) return fallar("Elige o escribe tu ciudad.", $("#campo-ciudad"));
+    const correo = ($("#campo-correo") || {}).value ? $("#campo-correo").value.trim() : "";
+    if (correo && !/^[^\s@<>"']{1,64}@[^\s@<>"']{1,180}\.[a-z]{2,}$/i.test(correo)) return fallar("Revisa tu correo (o déjalo vacío).", $("#campo-correo"));
     if (!$("#pedido-acepto").checked) return fallar("Para confirmar, autoriza el tratamiento de tus datos.", $("#pedido-acepto"));
     error.textContent = "";
     const d = Object.fromEntries(new FormData(f));
@@ -586,7 +588,7 @@
       `Pago: ${d.pago}`,
       envioTexto(paisNombre).texto,
       "",
-      `Nombre: ${d.nombre}`, `Documento: ${d.documento}`, `Celular: ${cel.numeroE164}`,
+      `Nombre: ${d.nombre}`, `Documento: ${d.documento}`, `Celular: ${cel.numeroE164}`, d.correo ? `Correo: ${d.correo.trim()}` : "",
       `País: ${paisNombre}`, `Región: ${u ? u.region() : ""}`, `Ciudad: ${u ? u.ciudad() : ""}`, `Dirección: ${d.direccion}`,
     ].filter(Boolean).join("\n");
     // En Colombia: pago en línea o contraentrega por Mercado Pago (el servidor recalcula precios y envío)
@@ -663,7 +665,7 @@
           body: JSON.stringify({
             verificacion, totalVisto,
             pedido, pago: contra ? "contraentrega" : "en_linea", acepto: $("#pedido-acepto").checked,
-            cliente: { nombre: d.nombre, documento: d.documento, celular, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
+            cliente: { nombre: d.nombre, documento: d.documento, celular, correo: (d.correo || "").trim(), departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
           }),
         });
       } catch (e) { throw new Error("La conexión tardó demasiado."); }
@@ -697,7 +699,7 @@
           method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout ? AbortSignal.timeout(25000) : undefined,
           body: JSON.stringify({
             verificacion, pedido, acepto: $("#pedido-acepto").checked,
-            cliente: { nombre: d.nombre, documento: d.documento, celular, pais: isoPedido(), region: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
+            cliente: { nombre: d.nombre, documento: d.documento, celular, correo: (d.correo || "").trim(), pais: isoPedido(), region: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
           }),
         });
       } catch (e) { throw new Error("La conexión tardó demasiado."); }
