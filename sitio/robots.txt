@@ -2,5 +2,6 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /gracias
+Disallow: /admin/
 
 Sitemap: https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/sitemap.xml

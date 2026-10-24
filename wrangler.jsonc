@@ -18,8 +18,10 @@
   },
   // Base de pedidos y clientes (espacio KV "ie_pedidos")
   "kv_namespaces": [{ "binding": "PEDIDOS", "id": "f0afa9fa377c4c6fae242f1f57aac709" }],
-  // Tarea programada: revisa carritos sin pagar cada 20 minutos
-  "triggers": { "crons": ["*/20 * * * *"] },
+  // Tareas programadas (hora UTC): carritos sin pagar cada 20 minutos y resumen diario a las 7:00 a. m. de Colombia
+  "triggers": { "crons": ["*/20 * * * *", "0 12 * * *"] },
+  // Workers AI: pasa a texto las notas de voz de la app de pedidos y las convierte en acciones
+  "ai": { "binding": "AI" },
   // No borrar las variables que se agreguen en el panel de Cloudflare al publicar desde GitHub
   "keep_vars": true,
   // Datos NO secretos (los tokens van como "Secret" en el panel de Cloudflare, nunca aquí)

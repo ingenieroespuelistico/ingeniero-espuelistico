@@ -324,6 +324,7 @@ writeFileSync(join(sitio, "robots.txt"), `User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /gracias
+Disallow: /admin/
 
 Sitemap: ${absoluta("/sitemap.xml")}
 `);

@@ -37,6 +37,12 @@ function resumenPedido(p) {
     c: (p.cliente && p.cliente.celular) || "",
     ci: String((p.cliente && p.cliente.ciudad) || "").slice(0, 30),
     ca: p.canal || "web",
+    s: Math.round(Number(p.subtotal) || 0),            // valor de los productos en pesos (para calcular ganancia)
+    co: p.costo == null ? null : Math.round(Number(p.costo) || 0), // lo que le costó al taller
+    pv: p.proveedoresPagados ? 1 : 0,
+    m: p.moneda === "USD" ? "USD" : undefined,
+    pa: p.pagadoEn || undefined,
+    g: p.guia ? 1 : 0,
   };
 }
 
@@ -140,9 +146,9 @@ const MOTIVOS_RECHAZO = {
   rejected_by_bank: "el banco lo rechazó",
 };
 const hace = (ms) => { const min = Math.round(ms / MINUTO); return min < 90 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`; };
-const pesos = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-CO");
+const pesos = (n) => { const v = Math.round(Number(n) || 0); return (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("es-CO"); };
 // Valor del pedido en su moneda (los de PayPal van en dólares)
-export const dinero = (p, n = p.total) => (p.moneda === "USD" ? `USD ${Number(n || 0).toFixed(2)}` : pesos(n));
+export const dinero = (p, n = p.total) => (p && p.moneda === "USD" ? `USD ${Number(n || 0).toFixed(2)}` : pesos(n));
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // Hora de Colombia (UTC-5): de 9 p. m. a 7 a. m. los avisos llegan sin sonido

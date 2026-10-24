@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#142033">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pedidos IE">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Pedidos · Ingeniero Espuelístico</title>
+<link rel="manifest" href="/admin/manifest.webmanifest">
+<link rel="icon" href="/admin/icono.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/admin/icono-180.png">
+<link rel="preload" href="/fuentes/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/admin/admin.css?v=1">
+</head>
+<body>
+
+<!-- Entrada -->
+<section class="entrada" id="entrada" hidden>
+  <form class="entrada__caja" id="form-entrar">
+    <img src="/admin/icono.svg" alt="" width="72" height="72">
+    <h1>Pedidos</h1>
+    <p>Ingeniero Espuelístico</p>
+    <label for="clave">Clave<input id="clave" type="password" autocomplete="current-password" required></label>
+    <p class="error" id="error-entrar" role="alert"></p>
+    <button class="btn btn--azul btn--ancho" type="submit">Entrar</button>
+  </form>
+</section>
+
+<!-- App -->
+<div class="app" id="app" hidden>
+  <header class="barra">
+    <h1 id="titulo">Hoy</h1>
+    <button class="icono" type="button" id="recargar" aria-label="Actualizar"><svg viewBox="0 0 24 24"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.2L13 11h7V4l-2.3 2.3Z"/></svg></button>
+  </header>
+
+  <main id="vista" class="vista" tabindex="-1"></main>
+
+  <nav class="menu" aria-label="Secciones">
+    <a href="#hoy" data-seccion="hoy"><svg viewBox="0 0 24 24"><path d="M12 3 3 10v11h6v-6h6v6h6V10l-9-7Z"/></svg>Hoy</a>
+    <a href="#pedidos" data-seccion="pedidos"><svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v16l-3-2-2 2-2-2-2 2-2-2-3 2V5a2 2 0 0 1 2-2Zm1 5v2h8V8H8Zm0 4v2h6v-2H8Z"/></svg>Pedidos</a>
+    <button type="button" class="menu__voz" id="boton-voz" aria-label="Dictar una nota de voz"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-2.1a7 7 0 0 0 6-6.9h-2Z"/></svg></button>
+    <a href="#clientes" data-seccion="clientes"><svg viewBox="0 0 24 24"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM2 20c0-3.3 3.1-6 7-6s7 2.7 7 6v1H2v-1Zm16 1v-1c0-1.7-.6-3.2-1.6-4.4.5-.1 1-.1 1.6-.1 2.8 0 4 1.9 4 4.5v1h-4Z"/></svg>Clientes</a>
+    <a href="#nuevo" data-seccion="nuevo"><svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>Nuevo</a>
+  </nav>
+</div>
+
+<!-- Nota de voz -->
+<div class="hoja" id="hoja-voz" hidden role="dialog" aria-modal="true" aria-labelledby="titulo-voz">
+  <div class="hoja__caja">
+    <h2 id="titulo-voz">Nota de voz</h2>
+    <div id="voz-grabar" class="voz">
+      <button type="button" class="voz__boton" id="voz-boton" aria-label="Empezar a grabar"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-2.1a7 7 0 0 0 6-6.9h-2Z"/></svg></button>
+      <p class="voz__estado" id="voz-estado">Toca el micrófono y di, por ejemplo: «El pedido de Juan Pérez ya fue despachado, guía 7001234. Ese pedido costó 180 mil».</p>
+      <details class="voz__texto">
+        <summary>Prefiero escribirlo</summary>
+        <textarea id="voz-escrito" rows="3" placeholder="El pedido de Juan ya fue entregado"></textarea>
+        <button type="button" class="btn btn--azul" id="voz-enviar-texto">Interpretar</button>
+      </details>
+    </div>
+    <div id="voz-resultado" hidden></div>
+    <button type="button" class="btn btn--borde btn--ancho" data-cerrar-hoja>Cerrar</button>
+  </div>
+</div>
+
+<div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
+
+<script src="/admin/admin.js?v=1" defer></script>
+</body>
+</html>

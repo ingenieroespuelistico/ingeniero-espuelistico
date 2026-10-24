@@ -8,13 +8,16 @@
 //   GET  /api/salud        → revisa que los secretos estén guardados
 //   POST /api/paypal/crear     → pedido desde otro país: crea la orden de PayPal (en dólares)
 //   POST /api/paypal/capturar  → cuando el cliente vuelve de PayPal: cobra la orden y avisa por Telegram
+//   /api/admin/...         → datos de la app de pedidos (sitio/admin/), con clave ADMIN_CLAVE
+//   Tarea programada diaria (7:00 a. m. de Colombia) → resumen de pedidos por Telegram
 //   Tarea programada (cada 20 min) → avisa por Telegram los carritos que quedaron sin pagar
 
 import { Tienda } from "./catalogo.generado.js";
 import { registrarPedidoWeb, registrarPago, revisarAbandonados } from "./pedidos.js";
 import { paypalListo, crearOrden, capturarOrden, consultarOrden, ESTADO_PAYPAL } from "./paypal.js";
+import { atenderAdmin, resumenDiario } from "./admin.js";
 
-const VERSION = "2026-10-23.5";
+const VERSION = "2026-10-23.6";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -80,6 +83,10 @@ export default {
         if (ruta === "/api/cotizar") return await cotizar(cuerpo, env, ctx);
         return await crearPedido(cuerpo, url, env, request);
       }
+      if (ruta.startsWith("/api/admin/")) {
+        if (!(await dentroDelLimite(request, env, "/api/admin"))) return error("Demasiadas solicitudes. Espera un minuto.", 429);
+        return await atenderAdmin(request, url, env, { json, error, leerJSON, mismoOrigen, telegram, idPedido, CABECERAS });
+      }
       if (ruta.startsWith("/api/")) return error("No encontrado", 404);
       return env.ASSETS.fetch(request);
     } catch (e) {
@@ -89,6 +96,10 @@ export default {
   },
   // Tarea programada (ver "triggers" en wrangler.jsonc)
   async scheduled(evento, env, ctx) {
+    if (evento.cron === "0 12 * * *") {
+      ctx.waitUntil(resumenDiario(env, (m, sil) => telegram(env, m, sil), Tienda.NEGOCIO.sitio).catch((e) => console.error("resumenDiario", e && e.stack || e)));
+      return;
+    }
     ctx.waitUntil(revisarAbandonados(env, (mensaje, silencioso) => telegram(env, mensaje, silencioso), Date.now(), { rescatar: (p) => rescatarPaypal(env, p) })
       .then((r) => console.log("carritos abiertos", JSON.stringify(r)))
       .catch((e) => console.error("revisarAbandonados", e && e.stack || e)));
@@ -407,6 +418,7 @@ async function procesarPago(id, env) {
     `Pago Mercado Pago #${esc(p.id)}`,
     "",
     aprobado ? `👉 Siguiente paso: genera la guía en Envia con ${esc(Tienda.ENVIO_NACIONAL.transportadora)}${m.tipo === "contraentrega" ? ` <b>con contraentrega por ${pesos(m.cobrar_al_recibir)}</b>` : ""}, despacha y envíale la guía al cliente por WhatsApp.` : null,
+    aprobado && env.PEDIDOS ? `📲 <a href="${Tienda.NEGOCIO.sitio}/admin/#pedido=${encodeURIComponent(m.pedido || p.external_reference)}">Abrir en la app de pedidos</a>` : null,
   ].filter((x) => x !== null).join("\n");
   if (!(await telegram(env, lineas))) return false; // Telegram falló: que Mercado Pago reintente
   await marcarAvisado(env, clave);
