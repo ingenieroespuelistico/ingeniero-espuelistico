@@ -2,7 +2,7 @@
 // Los píxeles SOLO se cargan si el visitante acepta. Si rechaza o no responde, no se carga nada de Meta ni de TikTok.
 // Para apagar un píxel, deja su número vacío: "".
 const PIXEL_META = "4635634140053926";
-const PIXEL_TIKTOK = ""; // ej. "C4ABCDEF1234567890" (TikTok Ads Manager → Herramientas → Eventos → Píxel web)
+const PIXEL_TIKTOK = "DBDV8JBC77U4J2JQC9OG"; // TikTok Ads Manager → Herramientas → Eventos → Píxel web
 
 (() => {
   "use strict";
