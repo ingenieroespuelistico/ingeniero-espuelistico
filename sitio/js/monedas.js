@@ -9,8 +9,6 @@ const MONEDAS_PAIS = {
   PA: { moneda: "USD", pais: "Panamá", locale: "es-PA" },
   PE: { moneda: "PEN", pais: "Perú", locale: "es-PE" },
   VE: { moneda: "USD", pais: "Venezuela", locale: "es-VE" },
-  US: { moneda: "USD", pais: "Estados Unidos", locale: "en-US" },
-  CA: { moneda: "CAD", pais: "Canadá", locale: "en-CA" },
 };
 
 (() => {

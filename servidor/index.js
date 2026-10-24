@@ -9,7 +9,7 @@
 
 import { Tienda } from "./catalogo.generado.js";
 
-const VERSION = "2026-10-23.2";
+const VERSION = "2026-10-23.3";
 const C = Tienda.Calculo;
 
 const CABECERAS = {

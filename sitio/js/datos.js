@@ -12,7 +12,10 @@ const NEGOCIO = {
   sitio: "https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev",
   direccion: { calle: "Transversal 11 Sur # 13-65, casa 28", ciudad: "Ibagué", departamento: "Tolima", pais: "CO" },
   // Clave pública de Cloudflare Turnstile (protección contra robots). Vacío = desactivado.
-  turnstile: "", // desactivado temporalmente; clave pública: 0x4AAAAAAFjO18VrFJBssEiL
+  turnstile: "0x4AAAAAAFjO18VrFJBssEiL",
+  // Países a los que NO se envía (sus leyes prohíben o restringen importar espuelas y accesorios para gallos).
+  // Si el cliente elige uno de estos en el pedido, se le muestra el aviso y no se deja confirmar.
+  paisesSinEnvio: { US: "Estados Unidos", PR: "Puerto Rico", GU: "Guam", VI: "Islas Vírgenes de EE. UU.", AS: "Samoa Americana", MP: "Islas Marianas del Norte", UM: "Islas menores de EE. UU.", CA: "Canadá" },
 };
 
 // Niveles de precio de espuelas: se calculan con el total de pares de espuela del pedido.

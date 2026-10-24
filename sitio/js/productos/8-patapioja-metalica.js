@@ -4,7 +4,7 @@
   "tipo": "unidad-docena",
   "nombre": "Patapioja metálica",
   "unidad": "par",
-  "detalle": "Estándar, de torneo (más pequeña) o de realce",
+  "detalle": "Estándar, pequeña o de realce",
   "variantes": [
     {
       "id": "estandar",
@@ -13,7 +13,7 @@
     },
     {
       "id": "torneo",
-      "nombre": "De torneo",
+      "nombre": "Pequeña",
       "peso": 4
     },
     {
@@ -22,6 +22,6 @@
       "peso": 6
     }
   ],
-  "descripcion": "Patapioja metálica en tres versiones: estándar, de torneo (más pequeña) y de realce. Se vende por par o por docena.",
+  "descripcion": "Patapioja metálica en tres versiones: estándar, pequeña y de realce. Se vende por par o por docena.",
   "dureza": "Extrema"
 });

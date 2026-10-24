@@ -13,14 +13,14 @@ const SINONIMOS = {
   "blanca-enteriza": ["blanca", "sintetica", "plastica", "plastico", "enteriza", "entera", "una pieza"],
   "negra-enteriza":  ["negra", "enteriza", "entera", "una pieza"],
   "patapioja":       ["patera", "zapatola", "parrilla", "pata", "patapioja sintetica"],
-  "metalica":        ["patapioja metalica", "patera metalica", "metal", "acero", "torneo", "realce"],
+  "metalica":        ["patapioja metalica", "patera metalica", "metal", "acero", "pequena", "realce"],
   "cera":            ["silicona", "melcocha", "pegante", "pega", "pegamento", "cera amarilla", "barra", "gruesa", "delgada"],
   "esparadrapo":     ["cinta", "tape", "rollo", "venda", "cinta medica"],
 };
 
 // Palabras de cada TIPO de producto (pesan menos: sirven para que salgan todos los de ese tipo)
 const SINONIMOS_TIPO = {
-  "espuela":       ["espuela", "sintetica", "plastica", "gruesa", "delgada", "pua", "gallo", "pelea"],
+  "espuela":       ["espuela", "sintetica", "plastica", "gruesa", "delgada", "pua", "gallo"],
   "patapioja":     ["patapioja", "accesorio"],
   "unidad-docena": ["accesorio", "docena"],
   "variantes":     ["accesorio"],

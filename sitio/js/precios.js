@@ -33,7 +33,7 @@ const PRECIOS = {
   },
   "metalica": {                       // Patapioja metálica (precio por par y por docena de pares)
     estandar: { unidad: 4500, docena: 35000 },
-    torneo:   { unidad: 4500, docena: 35000 },
+    torneo:   { unidad: 4500, docena: 35000 },   // se muestra como "Pequeña" (el nombre interno sigue siendo torneo)
     realce:   { unidad: 6000, docena: 45000 },
   },
 

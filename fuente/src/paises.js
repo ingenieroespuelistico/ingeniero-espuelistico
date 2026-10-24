@@ -1,7 +1,7 @@
 // Países, indicativos y validación de celulares (libphonenumber-js, metadatos "min").
 import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength, Metadata } from "libphonenumber-js/min";
 
-const PRINCIPALES = ["CO", "CR", "EC", "PA", "PE", "VE", "US", "CA"];
+const PRINCIPALES = ["CO", "CR", "EC", "PA", "PE", "VE"];
 const nombres = new Intl.DisplayNames(["es"], { type: "region" });
 const nombre = (iso) => { try { return nombres.of(iso); } catch (e) { return iso; } };
 const indicativo = (iso) => "+" + getCountryCallingCode(iso);

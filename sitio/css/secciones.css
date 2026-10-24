@@ -347,6 +347,10 @@ input, select, textarea { background-color: #fff; color: #142033; }
 .aviso-medicion__no:hover { border-color: var(--tinta-suave); }
 @media (max-width: 560px) { .aviso-medicion { bottom: 84px; padding: 14px; } }
 
+/* ----- Aviso de país sin envío (pedido) ----- */
+.aviso-sin-envio { margin: 0; padding: 12px 14px; border-radius: var(--radio); background: #FDECEE; color: #7A0A1C; border: 1px solid #F3B8C1; font-size: .92rem; line-height: 1.45; }
+#boton-confirmar:disabled { opacity: .55; cursor: not-allowed; }
+
 /* ----- Página de gracias ----- */
 .gracias { text-align: center; padding: 48px 16px 64px; max-width: 640px; }
 .gracias__icono { font-size: 3rem; margin: 0; }
@@ -358,6 +362,7 @@ input, select, textarea { background-color: #fff; color: #142033; }
 /* ----- Iconos en botones y sello de pago seguro ----- */
 .boton__icono { width: 20px; height: 20px; flex: 0 0 auto; }
 .sello-pago { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 0; font-size: .82rem; color: var(--tinta-suave); text-align: center; }
+.sello-pago[hidden] { display: none; }
 .sello-pago svg { width: 14px; height: 14px; color: var(--verde); flex: 0 0 auto; }
 .linea__peso { color: var(--tinta-suave); }
 

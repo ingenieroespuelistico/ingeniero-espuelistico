@@ -170,7 +170,7 @@ const window = {};
   "tipo": "unidad-docena",
   "nombre": "Patapioja metálica",
   "unidad": "par",
-  "detalle": "Estándar, de torneo (más pequeña) o de realce",
+  "detalle": "Estándar, pequeña o de realce",
   "variantes": [
     {
       "id": "estandar",
@@ -179,7 +179,7 @@ const window = {};
     },
     {
       "id": "torneo",
-      "nombre": "De torneo",
+      "nombre": "Pequeña",
       "peso": 4
     },
     {
@@ -188,7 +188,7 @@ const window = {};
       "peso": 6
     }
   ],
-  "descripcion": "Patapioja metálica en tres versiones: estándar, de torneo (más pequeña) y de realce. Se vende por par o por docena.",
+  "descripcion": "Patapioja metálica en tres versiones: estándar, pequeña y de realce. Se vende por par o por docena.",
   "dureza": "Extrema"
 });
 
@@ -228,7 +228,7 @@ const PRECIOS = {
   },
   "metalica": {                       // Patapioja metálica (precio por par y por docena de pares)
     estandar: { unidad: 4500, docena: 35000 },
-    torneo:   { unidad: 4500, docena: 35000 },
+    torneo:   { unidad: 4500, docena: 35000 },   // se muestra como "Pequeña" (el nombre interno sigue siendo torneo)
     realce:   { unidad: 6000, docena: 45000 },
   },
 
@@ -308,7 +308,10 @@ const NEGOCIO = {
   sitio: "https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev",
   direccion: { calle: "Transversal 11 Sur # 13-65, casa 28", ciudad: "Ibagué", departamento: "Tolima", pais: "CO" },
   // Clave pública de Cloudflare Turnstile (protección contra robots). Vacío = desactivado.
-  turnstile: "", // desactivado temporalmente; clave pública: 0x4AAAAAAFjO18VrFJBssEiL
+  turnstile: "0x4AAAAAAFjO18VrFJBssEiL",
+  // Países a los que NO se envía (sus leyes prohíben o restringen importar espuelas y accesorios para gallos).
+  // Si el cliente elige uno de estos en el pedido, se le muestra el aviso y no se deja confirmar.
+  paisesSinEnvio: { US: "Estados Unidos", PR: "Puerto Rico", GU: "Guam", VI: "Islas Vírgenes de EE. UU.", AS: "Samoa Americana", MP: "Islas Marianas del Norte", UM: "Islas menores de EE. UU.", CA: "Canadá" },
 };
 
 // Niveles de precio de espuelas: se calculan con el total de pares de espuela del pedido.
@@ -452,7 +455,7 @@ const FICHAS = Object.fromEntries(PRODUCTOS.map((p) => [p.id, { descripcion: p.d
 const PREGUNTAS = [
   {
     pregunta: "¿Qué significan las \"líneas\" de una espuela?",
-    respuesta: "Las líneas son milímetros, medidos desde la base del casquillo hasta la punta de la espiga. En Estados Unidos y Costa Rica se usan pulgadas: 35 líneas son 1.4, 38 son 1.5, 40 son 1.6 y 42 o 43 son 1.7.",
+    respuesta: "Las líneas son milímetros, medidos desde la base del casquillo hasta la punta de la espiga. En Costa Rica y otros países se usan pulgadas: 35 líneas son 1.4, 38 son 1.5, 40 son 1.6 y 42 o 43 son 1.7.",
   },
   {
     pregunta: "¿Qué diferencia hay entre una espuela con casquillo metálico y una enteriza?",
@@ -480,7 +483,7 @@ const PREGUNTAS = [
   },
   {
     pregunta: "¿Envían a otros países?",
-    respuesta: `Sí. A Panamá y Costa Rica el envío cuesta USD ${ENVIO_INTERNACIONAL_USD.base} hasta 1 kg más USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. A Ecuador, ${ENVIO_INTERNACIONAL_USD.ecuador}. Para Perú, Estados Unidos, Canadá y otros países te cotizamos por WhatsApp.`,
+    respuesta: `Sí. A Panamá y Costa Rica el envío cuesta USD ${ENVIO_INTERNACIONAL_USD.base} hasta 1 kg más USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. A Ecuador, ${ENVIO_INTERNACIONAL_USD.ecuador}. Para Perú y otros países te cotizamos por WhatsApp. No enviamos a Estados Unidos (incluidos Puerto Rico y sus demás territorios) ni a Canadá, porque sus leyes restringen la importación de estos productos.`,
   },
   {
     pregunta: "¿Dan algún regalo?",

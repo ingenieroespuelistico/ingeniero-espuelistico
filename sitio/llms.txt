@@ -1,6 +1,6 @@
 # Ingeniero Espuelístico
 
-> Fábrica de espuelas para gallos y accesorios en Ibagué, Tolima, Colombia. Más de 25 años de tradición familiar. Venta al detal y por mayor, envíos a toda Colombia y exportación a Ecuador, Perú, Panamá, Costa Rica, Estados Unidos y Canadá.
+> Fábrica de espuelas para gallos y accesorios en Ibagué, Tolima, Colombia. Más de 25 años de tradición familiar. Venta al detal y por mayor, envíos a toda Colombia y exportación a Ecuador, Perú, Panamá y Costa Rica. No se envía a Estados Unidos, sus territorios ni Canadá.
 
 - Tienda: https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/
 - WhatsApp: +57 301 958 0737
@@ -15,7 +15,7 @@
 - [Patapioja sintética](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-sintetica): También llamada patera, zapatola o parrilla. $2.000 el par al detal; docena a $18.000.
 - [Cera amarilla en barra](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/cera-amarilla-en-barra): Delgada o gruesa. Se vende por barra o por docena. $6.500 la barra al detal; docena desde $50.000.
 - [Esparadrapo](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/esparadrapo): Rollos de 10 yardas de largo. Elige el ancho. $16.000 al detal.
-- [Patapioja metálica](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-metalica): Estándar, de torneo (más pequeña) o de realce. $4.500 el par al detal; docena desde $35.000.
+- [Patapioja metálica](https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/productos/patapioja-metalica): Estándar, pequeña o de realce. $4.500 el par al detal; docena desde $35.000.
 
 ## Precios de espuelas por cantidad (precio por par en bolsa; se suman todas las referencias del pedido)
 - Minorista: desde 1 pares

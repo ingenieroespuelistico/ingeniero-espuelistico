@@ -230,7 +230,7 @@ ${CABECERA}
   <section class="pp-seccion"><h2>Descripción</h2><p>${esc(p.descripcion)}</p>${datosTecnicos(p)}</section>
   <section class="pp-seccion"><h2>Precios</h2>${tablaPrecios(p)}</section>
   <section class="pp-seccion"><h2>Envíos y pagos</h2>
-    <p>Enviamos desde Ibagué a toda Colombia con Interrapidísimo; el valor se calcula en la tienda según tu municipio y el peso del paquete. También exportamos a Ecuador, Perú, Panamá, Costa Rica, Estados Unidos y Canadá.</p>
+    <p>Enviamos desde Ibagué a toda Colombia con Interrapidísimo; el valor se calcula en la tienda según tu municipio y el peso del paquete. También exportamos a Ecuador, Perú, Panamá, Costa Rica y otros países (no enviamos a Estados Unidos, sus territorios ni Canadá, por restricciones de importación).</p>
   </section>
   ${PREGUNTAS_PRODUCTO.length ? `<section class="pp-seccion"><h2>Preguntas frecuentes</h2>${PREGUNTAS_PRODUCTO.map((q) => `<details class="pregunta"><summary>${esc(q.pregunta)}</summary><p>${esc(q.respuesta)}</p></details>`).join("")}</section>` : ""}
   <section class="pp-seccion"><h2>Otros productos</h2><ul class="pp-relacionados">${enlacesProductos(p.id)}</ul></section>
@@ -257,7 +257,7 @@ const tienda = {
     { "@type": "OpeningHoursSpecification", dayOfWeek: DIAS["Lun a vie"], opens: "08:00", closes: "19:00" },
     { "@type": "OpeningHoursSpecification", dayOfWeek: DIAS["Sáb"], opens: "08:00", closes: "14:00" },
   ],
-  areaServed: ["Colombia", "Ecuador", "Perú", "Panamá", "Costa Rica", "Estados Unidos", "Canadá"].map((n) => ({ "@type": "Country", name: n })),
+  areaServed: ["Colombia", "Ecuador", "Perú", "Panamá", "Costa Rica"].map((n) => ({ "@type": "Country", name: n })),
   sameAs: [N.tiktok, N.facebook].filter(Boolean),
   priceRange: "$",
   hasMerchantReturnPolicy: {
@@ -329,7 +329,7 @@ Sitemap: ${absoluta("/sitemap.xml")}
 `);
 writeFileSync(join(sitio, "llms.txt"), `# Ingeniero Espuelístico
 
-> Fábrica de espuelas para gallos y accesorios en Ibagué, Tolima, Colombia. Más de 25 años de tradición familiar. Venta al detal y por mayor, envíos a toda Colombia y exportación a Ecuador, Perú, Panamá, Costa Rica, Estados Unidos y Canadá.
+> Fábrica de espuelas para gallos y accesorios en Ibagué, Tolima, Colombia. Más de 25 años de tradición familiar. Venta al detal y por mayor, envíos a toda Colombia y exportación a Ecuador, Perú, Panamá y Costa Rica. No se envía a Estados Unidos, sus territorios ni Canadá.
 
 - Tienda: ${absoluta("/")}
 - WhatsApp: ${N.telefonoVisible}

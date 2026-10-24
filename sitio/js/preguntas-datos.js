@@ -2,7 +2,7 @@
 const PREGUNTAS = [
   {
     pregunta: "¿Qué significan las \"líneas\" de una espuela?",
-    respuesta: "Las líneas son milímetros, medidos desde la base del casquillo hasta la punta de la espiga. En Estados Unidos y Costa Rica se usan pulgadas: 35 líneas son 1.4, 38 son 1.5, 40 son 1.6 y 42 o 43 son 1.7.",
+    respuesta: "Las líneas son milímetros, medidos desde la base del casquillo hasta la punta de la espiga. En Costa Rica y otros países se usan pulgadas: 35 líneas son 1.4, 38 son 1.5, 40 son 1.6 y 42 o 43 son 1.7.",
   },
   {
     pregunta: "¿Qué diferencia hay entre una espuela con casquillo metálico y una enteriza?",
@@ -30,7 +30,7 @@ const PREGUNTAS = [
   },
   {
     pregunta: "¿Envían a otros países?",
-    respuesta: `Sí. A Panamá y Costa Rica el envío cuesta USD ${ENVIO_INTERNACIONAL_USD.base} hasta 1 kg más USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. A Ecuador, ${ENVIO_INTERNACIONAL_USD.ecuador}. Para Perú, Estados Unidos, Canadá y otros países te cotizamos por WhatsApp.`,
+    respuesta: `Sí. A Panamá y Costa Rica el envío cuesta USD ${ENVIO_INTERNACIONAL_USD.base} hasta 1 kg más USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. A Ecuador, ${ENVIO_INTERNACIONAL_USD.ecuador}. Para Perú y otros países te cotizamos por WhatsApp. No enviamos a Estados Unidos (incluidos Puerto Rico y sus demás territorios) ni a Canadá, porque sus leyes restringen la importación de estos productos.`,
   },
   {
     pregunta: "¿Dan algún regalo?",

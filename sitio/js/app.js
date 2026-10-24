@@ -377,11 +377,23 @@
     return { texto: `Envío a ${pais}: te cotizamos por WhatsApp según el peso (aprox. ${kg.toFixed(2)} kg).` };
   }
 
+  // Países a los que no se envía (ver NEGOCIO.paisesSinEnvio en datos.js)
+  const paisSinEnvio = () => { const iso = ubicacionPedido ? ubicacionPedido.iso() : "CO"; return (NEGOCIO.paisesSinEnvio || {})[iso] || ""; };
+  const AVISO_SIN_ENVIO = (n) => `No enviamos a ${n}. Las leyes de Estados Unidos (incluidos Puerto Rico y sus demás territorios) y de Canadá restringen la importación de espuelas y accesorios para gallos, así que no podemos despachar pedidos a esos destinos.`;
   function pintarPagos() {
     const pais = ubicacionPedido ? ubicacionPedido.paisNombre() : "Colombia";
     const caja = $("#opciones-pago");
     const sub = subtotal();
     const previo = (caja.querySelector("input[name=pago]:checked") || {}).value;
+    const sinEnvio = paisSinEnvio();
+    $("#boton-confirmar").disabled = Boolean(sinEnvio);
+    if (sinEnvio) {
+      caja.innerHTML = `<legend>Envío no disponible</legend><p class="aviso-sin-envio" role="alert">${AVISO_SIN_ENVIO(sinEnvio)}</p>`;
+      $("#nota-envio").textContent = "";
+      $("#boton-confirmar-texto").textContent = "Envío no disponible a este país";
+      $("#sello-pago").hidden = true;
+      return;
+    }
     if (pais === "Colombia") {
       const habilitada = sub >= NEGOCIO.contraentregaMinimo;
       caja.innerHTML = `<legend>¿Cómo quieres pagar?</legend>
@@ -412,6 +424,14 @@
     region: $("#campo-region"), regionLibre: $("#campo-region-libre"), ciudad: $("#campo-ciudad"), ciudadOtra: $("#campo-ciudad-otra"),
     alCambiar: () => { if (!panel.hidden) { pintarPagos(); actualizarEnvio(); } },
   }) : null;
+  // En la lista de países del pedido se marcan los destinos a los que no enviamos
+  function marcarPaisesSinEnvio() {
+    $$("#campo-pais-otro option, #campo-pais option").forEach((o) => {
+      if ((NEGOCIO.paisesSinEnvio || {})[o.value] && !o.dataset.sinEnvio) { o.dataset.sinEnvio = "1"; o.textContent += " · sin envío"; }
+    });
+  }
+  marcarPaisesSinEnvio();
+  document.addEventListener("ie:panel-abierto", marcarPaisesSinEnvio);
   // Al elegir departamento o municipio, se recalcula el envío
   ["#campo-region", "#campo-ciudad", "#campo-ciudad-otra", "#campo-region-libre"].forEach((sel) => {
     const el = $(sel);
@@ -534,6 +554,7 @@
     if (faltan.length) return fallar("Completa todos los datos de envío para confirmar.", faltan[0]);
     const u = ubicacionPedido;
     if (u && !u.iso()) return fallar("Elige tu país.", $("#campo-pais-otro"));
+    if (paisSinEnvio()) return fallar(AVISO_SIN_ENVIO(paisSinEnvio()), $("#campo-pais-otro"));
     const cel = u ? u.celular() : { ok: true, numeroE164: $("#campo-celular").value };
     if (!cel.ok) return fallar(cel.mensaje, $("#campo-celular"));
     if (u && !u.region()) return fallar("Elige tu departamento, provincia o estado.", $("#campo-region"));
@@ -646,7 +667,7 @@
     }
   }
   // Si el cliente vuelve con "Atrás" desde Mercado Pago, el botón no queda bloqueado
-  addEventListener("pageshow", (e) => { if (e.persisted) { $("#boton-confirmar").disabled = false; textoConfirmar(); } });
+  addEventListener("pageshow", (e) => { if (e.persisted) { $("#boton-confirmar").disabled = Boolean(paisSinEnvio()); textoConfirmar(); } });
 
   pintarPedido();
 
