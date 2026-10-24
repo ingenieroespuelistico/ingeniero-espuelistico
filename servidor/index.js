@@ -375,7 +375,8 @@ async function estadoPago(url, env) {
 
 /* ---------------- Turnstile (protección contra robots) ---------------- */
 async function humanoVerificado(request, env, token) {
-  if (!env.TURNSTILE_SECRET) return true; // desactivado mientras no se configure
+  // Se exige solo si hay clave secreta Y la página tiene la clave pública activa (NEGOCIO.turnstile)
+  if (!env.TURNSTILE_SECRET || !Tienda.NEGOCIO.turnstile) return true;
   if (!token || typeof token !== "string" || token.length > 2048) return false;
   const datos = new FormData();
   datos.append("secret", env.TURNSTILE_SECRET);

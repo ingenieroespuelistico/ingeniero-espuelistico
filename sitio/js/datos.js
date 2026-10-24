@@ -12,7 +12,7 @@ const NEGOCIO = {
   sitio: "https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev",
   direccion: { calle: "Transversal 11 Sur # 13-65, casa 28", ciudad: "Ibagué", departamento: "Tolima", pais: "CO" },
   // Clave pública de Cloudflare Turnstile (protección contra robots). Vacío = desactivado.
-  turnstile: "0x4AAAAAAFjO18VrFJBssEiL",
+  turnstile: "", // desactivado temporalmente; clave pública: 0x4AAAAAAFjO18VrFJBssEiL
 };
 
 // Niveles de precio de espuelas: se calculan con el total de pares de espuela del pedido.
