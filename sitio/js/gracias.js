@@ -82,6 +82,19 @@
       : `Mercado Pago confirmó tu pago de ${pesos(d.total)}. Despachamos el mismo día si pagaste antes de las 4:00 p.m. (sábados antes de las 10:00 a.m.). Te escribimos por WhatsApp con la guía. Mercado Pago también te envió el comprobante a tu correo.`);
     document.body.classList.add("gracias--ok");
     try { localStorage.removeItem("ie-pedido"); sessionStorage.removeItem("ie-ultimo-pedido"); } catch (e) {}
+    // Acuse de recibo: resumen del pedido para guardar o imprimir
+    if (d.resumen && d.resumen.productos && d.resumen.productos.length) {
+      const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      const r = d.resumen, caja = $("gracias-resumen");
+      caja.innerHTML = `<h2>Resumen de tu pedido</h2><ul>${r.productos.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+        ${r.regalo ? `<p>🎁 Regalo: ${esc(r.regalo)}</p>` : ""}
+        ${r.envio ? `<p>Envío${r.ciudad ? " a " + esc(r.ciudad) : ""}: ${pesos(r.envio.valor)}${r.envio.transportadora ? " · " + esc(r.envio.transportadora) : ""}${r.envio.dias ? " · " + esc(r.envio.dias) : ""}</p>` : ""}
+        <p><strong>Pagado: ${pesos(d.total)}</strong>${d.contraentrega ? ` · <strong>Pagas al recibir: ${pesos(r.cobrarAlRecibir)}</strong>` : ""}</p>
+        <p class="gracias__nota">Esta página es la confirmación de tu compra: guárdala o toma una captura. <a href="#" id="imprimir">Imprimir o guardar en PDF</a></p>`;
+      caja.hidden = false;
+      const imp = document.getElementById("imprimir");
+      if (imp) imp.addEventListener("click", (e) => { e.preventDefault(); print(); });
+    }
     const ya = `ie-compra-${d.pedido}`;
     let contada = false;
     try { contada = localStorage.getItem(ya) === "1"; localStorage.setItem(ya, "1"); } catch (e) {}

@@ -18,6 +18,7 @@
 
   let ETAPAS = {};
   let pedidos = [];
+  let pqrAbiertas = 0;
   let clientes = null;
 
   /* ---------- Servidor ---------- */
@@ -51,7 +52,7 @@
 
   async function cargar() {
     const d = await api("inicio");
-    ETAPAS = d.etapas; pedidos = d.pedidos;
+    ETAPAS = d.etapas; pedidos = d.pedidos; pqrAbiertas = d.pqrAbiertas || 0;
   }
   async function iniciar() {
     try { await cargar(); } catch (e) { if ($("#entrada").hidden) aviso(e.message); return; }
@@ -65,9 +66,9 @@
   addEventListener("hashchange", () => { if (!$("#app").hidden) pintar(); });
   function pintar() {
     const { k, v } = ruta();
-    const seccion = { pedido: "pedidos", cliente: "clientes" }[k] || k;
+    const seccion = { pedido: "pedidos", cliente: "clientes", pqrs: "hoy", pqr: "hoy" }[k] || k;
     $$(".menu a").forEach((a) => { if (a.dataset.seccion === seccion) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
-    const vistas = { hoy: vistaHoy, pedidos: vistaPedidos, pedido: () => vistaPedido(v), clientes: vistaClientes, cliente: () => vistaCliente(v), nuevo: vistaNuevo };
+    const vistas = { hoy: vistaHoy, pedidos: vistaPedidos, pedido: () => vistaPedido(v), clientes: vistaClientes, cliente: () => vistaCliente(v), nuevo: vistaNuevo, pqrs: vistaPQRs, pqr: () => vistaPQR(v) };
     (vistas[k] || vistaHoy)();
     scrollTo(0, 0);
   }
@@ -110,6 +111,7 @@
         <a class="kpi" href="#pedidos=despachado"><strong>${despachados.length}</strong><span>Despachados (confirmar entrega)</span></a>
         <a class="kpi" href="#pedidos=proveedores"><strong>${proveedores.length}</strong><span>Proveedores por pagar</span></a>
         <a class="kpi" href="#pedidos=sin_costo"><strong>${sinCosto.length}</strong><span>Sin costo registrado</span></a>
+        <a class="kpi kpi--ancho ${pqrAbiertas ? "kpi--alerta" : ""}" href="#pqrs"><strong>${pqrAbiertas}</strong><span>Peticiones, quejas y reclamos por responder (máximo 15 días hábiles)</span></a>
       </div>
       <section class="tarjeta">
         <h2>${esc(fecha(new Date().toISOString(), { month: "long", year: "numeric" }))}</h2>
@@ -253,6 +255,53 @@
       if (a === "guardar-nota" && $("#campo-nota").value.trim()) guardar({ nota: $("#campo-nota").value }, "Nota guardada");
     };
     $("#campo-proveedores").onchange = (e) => guardar({ proveedoresPagados: e.target.checked }, e.target.checked ? "Proveedores pagados" : "Proveedores pendientes");
+  }
+
+  /* ---------- PQR (peticiones, quejas y reclamos) ---------- */
+  async function vistaPQRs() {
+    titulo("PQR");
+    vista(`<p class="vacio">Cargando…</p>`);
+    let d;
+    try { d = await api("pqrs"); } catch (e) { vista(`<p class="vacio">${esc(e.message)}</p>`); return; }
+    const vence = (q) => { const dias = Math.ceil((Date.parse(q.l) - Date.now()) / 86400000); return dias < 0 ? `<span class="etiqueta marca-falta">Vencida</span>` : dias <= 3 ? `<span class="etiqueta marca-falta">Vence en ${dias} d</span>` : `<span class="etiqueta">Vence ${fecha(q.l)}</span>`; };
+    vista(d.pqrs.length ? `<div class="lista">${d.pqrs.map((q) => `<a class="item" href="#pqr=${encodeURIComponent(q.radicado)}">
+      <span><span class="item__nombre">${esc(q.n || "Sin nombre")}</span><br><span class="item__dato">${esc(d.tipos[q.t] || q.t)} · ${esc(q.radicado)} · ${fecha(q.f)}</span></span>
+      <span><span class="etiqueta ${q.e === "respondida" || q.e === "cerrada" ? "marca-ok" : ""}">${esc(d.estados[q.e] || q.e)}</span><br>${q.e === "recibida" || q.e === "en_tramite" ? vence(q) : ""}</span></a>`).join("")}</div>`
+      : `<p class="vacio">No hay peticiones, quejas ni reclamos.</p>`);
+  }
+  async function vistaPQR(r) {
+    titulo("PQR");
+    vista(`<p class="vacio">Cargando…</p>`);
+    let d;
+    try { d = await api(`pqr?r=${encodeURIComponent(r)}`); } catch (e) { vista(`<p class="vacio">${esc(e.message)}</p>`); return; }
+    const q = d.pqr, c = q.cliente || {}, cel = soloDigitos(c.celular);
+    const textoWA = q.respuesta ? `Hola ${String(c.nombre || "").split(" ")[0]}, te escribimos de Ingeniero Espuelístico sobre tu solicitud ${q.radicado}:\n\n${q.respuesta}\n\nPuedes consultarla en ${location.origin}/pqr` : "";
+    vista(`
+      <section class="tarjeta cabeza">
+        <div><span class="etiqueta">${esc(d.tipos[q.tipo] || q.tipo)}</span> <span class="etiqueta">${esc(d.estados[q.estado] || q.estado)}</span></div>
+        <h2>${esc(c.nombre)}</h2>
+        <small>${esc(q.radicado)} · radicada ${fechaHora(q.fecha)} · responder antes del ${fecha(q.limite, { day: "numeric", month: "long" })}</small>
+        <dl class="filas">
+          <div><dt>Documento</dt><dd>${esc(c.documento)}</dd></div>
+          <div><dt>Celular</dt><dd>${esc(c.celular)}</dd></div>
+          ${c.correo ? `<div><dt>Correo</dt><dd>${esc(c.correo)}</dd></div>` : ""}
+          ${q.pedido ? `<div><dt>Pedido</dt><dd><a href="#pedido=${encodeURIComponent(q.pedido)}">${esc(q.pedido)}</a></dd></div>` : ""}
+        </dl>
+        <p class="transcrito">${esc(q.mensaje).replace(/\n/g, "<br>")}</p>
+        ${cel ? `<div class="contacto"><a class="btn btn--wa btn--chico" href="https://wa.me/${cel}" target="_blank" rel="noopener">WhatsApp</a><a class="btn btn--borde btn--chico" href="tel:+${cel}">Llamar</a></div>` : ""}
+      </section>
+      <section class="tarjeta formulario">
+        <h2>Respuesta</h2>
+        <label>Estado<select id="pqr-estado">${Object.entries(d.estados).map(([k, t]) => `<option value="${k}" ${k === q.estado ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
+        <label>Respuesta al cliente (queda visible en /pqr con su radicado)<textarea id="pqr-respuesta" rows="6">${esc(q.respuesta || "")}</textarea></label>
+        <button class="btn btn--azul btn--ancho" id="pqr-guardar">Guardar</button>
+        ${textoWA && cel ? `<a class="btn btn--wa btn--ancho" href="https://wa.me/${cel}?text=${encodeURIComponent(textoWA)}" target="_blank" rel="noopener">Enviar la respuesta por WhatsApp</a>` : ""}
+      </section>
+      <section class="tarjeta"><h2>Historial</h2><ul class="linea-tiempo">${(q.historial || []).slice().reverse().map((x) => `<li>${esc(x.texto)}<small>${fechaHora(x.fecha)}</small></li>`).join("")}</ul></section>`);
+    $("#pqr-guardar").onclick = async () => {
+      try { await enviar("pqr", { radicado: q.radicado, estado: $("#pqr-estado").value, respuesta: $("#pqr-respuesta").value }); await cargar(); aviso("PQR actualizada"); vistaPQR(q.radicado); }
+      catch (e) { aviso(e.message, 4000); }
+    };
   }
 
   /* ---------- Clientes ---------- */

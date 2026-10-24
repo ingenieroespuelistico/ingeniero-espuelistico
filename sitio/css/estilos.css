@@ -302,6 +302,23 @@ section { padding: 72px 0; }
   .borrador { background: var(--azul-claro); border-radius: 10px; padding: 12px 16px; font-size: .95rem; }
 
 .pagina-documento { padding-bottom: 0; }
+.documento ol { padding-left: 22px; display: grid; gap: 6px; }
+.documento ol li { color: var(--tinta-suave); }
+.documento__fechas { font-size: .9rem; }
+.documento__resumen { background: var(--azul-claro); border-radius: 10px; padding: 12px 16px; }
+.documento h2[id] { scroll-margin-top: 90px; }
+.pie__legal { display: grid; gap: 6px; font-size: .88rem; text-align: center; }
+.pie__legal p { margin: 0; }
+.pie__legal a { color: #fff; }
+.pie__sic { margin: 0; font-size: .88rem; }
+.pqr { background: #fff; border: 1px solid var(--linea); border-radius: 14px; padding: 20px; margin-top: 24px; }
+.pqr h2 { margin-top: 0 !important; }
+.pqr__formulario textarea { width: 100%; min-height: 120px; padding: 12px; border: 1.5px solid var(--linea); border-radius: 10px; font: inherit; resize: vertical; }
+.pqr__formulario .boton { justify-self: start; }
+.pqr__formulario[hidden] { display: none; }
+.pqr__resultado { background: var(--verde-claro); border-radius: 10px; padding: 14px 16px; margin-top: 12px; }
+.pqr__resultado p { color: var(--tinta) !important; margin: 0 0 8px; }
+.pqr__numero { font-size: 1.1rem; }
 .sugerencia__texto { margin: 0; }
 
 /* =========================================================

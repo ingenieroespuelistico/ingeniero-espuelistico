@@ -10,18 +10,20 @@
 //   POST /api/paypal/capturar  → cuando el cliente vuelve de PayPal: cobra la orden y avisa por Telegram
 //   /api/admin/...         → datos de la app de pedidos (sitio/admin/), con clave ADMIN_CLAVE
 //   GET  /api/agenda       → horas ocupadas en Google Calendar (si está conectado)
+//   POST /api/pqr          → radica una petición, queja o reclamo (con número, fecha y hora); GET consulta su estado
 //   POST /api/agenda       → agenda una llamada: evento en Google Calendar + aviso por Telegram
 //   Tarea programada diaria (7:00 a. m. de Colombia) → resumen de pedidos por Telegram
 //   Tarea programada (cada 20 min) → avisa por Telegram los carritos que quedaron sin pagar
 
 import { Tienda } from "./catalogo.generado.js";
-import { registrarPedidoWeb, registrarPago, revisarAbandonados } from "./pedidos.js";
+import { registrarPedidoWeb, registrarPago, revisarAbandonados, leerPedido } from "./pedidos.js";
 import { paypalListo, crearOrden, capturarOrden, consultarOrden, ESTADO_PAYPAL } from "./paypal.js";
 import { atenderAdmin, resumenDiario } from "./admin.js";
 import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario.js";
 import { enviarConfirmacion, correoValido } from "./correo.js";
+import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-23.8";
+const VERSION = "2026-10-23.9";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -86,6 +88,18 @@ export default {
         if (!cuerpo) return error("Solicitud inválida");
         if (ruta === "/api/cotizar") return await cotizar(cuerpo, env, ctx);
         return await crearPedido(cuerpo, url, env, request);
+      }
+      if (ruta === "/api/pqr") {
+        if (!(await dentroDelLimite(request, env, ruta))) return error("Demasiadas solicitudes. Espera un minuto.", 429);
+        let r;
+        if (request.method === "GET") r = await consultarPQR(env, url.searchParams.get("radicado"), url.searchParams.get("documento"));
+        else if (request.method === "POST") {
+          if (!mismoOrigen(request, url)) return error("Origen no permitido", 403);
+          const cuerpo = await leerJSON(request);
+          if (!cuerpo) return error("Solicitud inválida");
+          r = await crearPQR(env, cuerpo, request.headers.get("CF-Connecting-IP") || "x", Tienda.AGENDA.festivos, (m) => telegram(env, m));
+        } else return error("Método no permitido", 405);
+        return r.ok ? json(r) : error(r.error, r.estado || 400);
       }
       if (ruta === "/api/agenda") {
         if (!(await dentroDelLimite(request, env, ruta))) return error("Demasiadas solicitudes. Espera un minuto.", 429);
@@ -657,7 +671,10 @@ async function estadoPago(url, env) {
   const m = p.metadata || {};
   const base = { ok: true, estado: p.status, medio: p.payment_method_id, contraentrega: m.tipo === "contraentrega" };
   if (!ref) return json(base); // sin número de pedido no se muestran montos
-  return json({ ...base, pedido: p.external_reference, total: p.transaction_amount, valorPedido: Number(m.subtotal_productos || 0) + Number(m.envio_valor || 0) || p.transaction_amount });
+  // Acuse de recibo: resumen del pedido (productos y envío, sin dirección ni documento)
+  const ped = env.PEDIDOS ? await leerPedido(env, ref).catch(() => null) : null;
+  const resumen = ped ? { productos: ped.productos || [], regalo: ped.regalo || "", envio: ped.envio ? { valor: ped.envio.valor, transportadora: ped.envio.transportadora || "", dias: ped.envio.dias || "" } : null, cobrarAlRecibir: ped.cobrarAlRecibir || 0, ciudad: (ped.cliente && ped.cliente.ciudad) || "" } : null;
+  return json({ ...base, pedido: p.external_reference, total: p.transaction_amount, valorPedido: Number(m.subtotal_productos || 0) + Number(m.envio_valor || 0) || p.transaction_amount, resumen });
 }
 
 /* ---------------- Turnstile (protección contra robots) ---------------- */

@@ -179,6 +179,7 @@ function mensajeRecuperacion(p, edadMs) {
     `📍 ${esc((p.cliente && (p.cliente.destino || p.cliente.ciudad)) || "")}`,
     "",
     cel ? `👉 <a href="${esc(enlace)}">Escribirle por WhatsApp</a> (el mensaje ya va escrito, revísalo antes de enviar)` : null,
+    cel ? "⏰ Ley 2300: escríbele solo lun–vie 7 a. m.–7 p. m. o sáb 8 a. m.–3 p. m. (no domingos ni festivos), y una sola vez." : null,
   ].filter((x) => x !== null).join("\n");
 }
 

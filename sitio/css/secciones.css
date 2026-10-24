@@ -430,3 +430,11 @@ input, select, textarea { background-color: #fff; color: #142033; }
 .error__wa { display: inline-block; margin-top: 6px; font-weight: 700; color: #0F6B39; }
 /* Ficha de producto con fondo sólido (el texto de atrás no se transparenta) */
 .ficha__caja { background: #fff; }
+
+/* ----- Resumen del pedido en la página de gracias (acuse de recibo) ----- */
+.gracias__resumen { text-align: left; background: #fff; border: 1px solid var(--linea); border-radius: 14px; padding: 16px 18px; margin: 16px auto 0; max-width: 560px; }
+.gracias__resumen h2 { font-size: 1.1rem; margin: 0 0 8px; }
+.gracias__resumen ul { margin: 0 0 10px; padding-left: 18px; display: grid; gap: 4px; }
+.gracias__resumen p { margin: 6px 0; }
+.gracias__nota { font-size: .88rem; color: var(--tinta-suave); }
+@media print { .cabecera, .gracias__botones, .aviso-medicion, #imprimir { display: none !important; } }

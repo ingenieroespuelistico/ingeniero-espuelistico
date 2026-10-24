@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="only light">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peticiones, quejas y reclamos · Ingeniero Espuelístico</title>
+<meta name="description" content="Radica una petición, queja, reclamo, garantía, retracto o reversión del pago en Ingeniero Espuelístico y consulta su estado con tu número de radicado.">
+<link rel="canonical" href="https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev/pqr">
+<link rel="icon" href="icono.svg" type="image/svg+xml">
+<link rel="preload" href="fuentes/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/estilos.css?v=13">
+<link rel="stylesheet" href="css/secciones.css?v=13">
+</head>
+<body class="pagina-documento">
+<header class="cabecera">
+  <div class="contenedor cabecera__fila">
+    <a class="marca" href="/"><span class="marca__nombre">Ingeniero<br>Espuelístico</span></a>
+    <a href="/">Volver a la tienda</a>
+  </div>
+</header>
+<main class="documento">
+  <div class="contenedor">
+    <h1>Peticiones, quejas y reclamos (PQR)</h1>
+    <p>Aquí puedes radicar una <strong>petición, queja, reclamo o sugerencia</strong>, pedir una garantía, ejercer el derecho de retracto o pedir la reversión de un pago. Te damos un <strong>número de radicado con fecha y hora</strong> y puedes consultar el estado en esta misma página. Respondemos en máximo 15 días hábiles.</p>
+
+    <section class="pqr" aria-labelledby="titulo-radicar">
+      <h2 id="titulo-radicar">Radicar una solicitud</h2>
+      <form class="formulario pqr__formulario" id="form-pqr" novalidate>
+        <label for="pqr-tipo">Tipo de solicitud
+          <select id="pqr-tipo" name="tipo" required>
+            <option value="">Elige una opción</option>
+            <option value="peticion">Petición (pedir información o un trámite)</option>
+            <option value="queja">Queja (inconformidad con el servicio)</option>
+            <option value="reclamo">Reclamo (problema con un pedido)</option>
+            <option value="garantia">Garantía (producto defectuoso)</option>
+            <option value="retracto">Derecho de retracto</option>
+            <option value="reversion">Reversión del pago</option>
+            <option value="datos">Datos personales (consulta o reclamo)</option>
+            <option value="sugerencia">Sugerencia o felicitación</option>
+          </select>
+        </label>
+        <label for="pqr-nombre">Nombre completo<input id="pqr-nombre" name="nombre" autocomplete="name" maxlength="80" required></label>
+        <label for="pqr-documento">Cédula o documento<input id="pqr-documento" name="documento" inputmode="numeric" maxlength="20" required></label>
+        <label for="pqr-celular">Celular con indicativo (ej. 3001234567 o +593 991234567)<input id="pqr-celular" name="celular" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" required></label>
+        <label for="pqr-correo">Correo <small>(opcional)</small><input id="pqr-correo" name="correo" type="email" autocomplete="email" maxlength="120"></label>
+        <label for="pqr-pedido">Número de pedido <small>(si lo tienes, ej. IE-20261023-AB12CD)</small><input id="pqr-pedido" name="pedido" maxlength="30" autocomplete="off"></label>
+        <label for="pqr-mensaje">Cuéntanos qué pasó y qué solicitas<textarea id="pqr-mensaje" name="mensaje" rows="6" maxlength="2000" required></textarea></label>
+        <div class="autorizacion">
+          <input id="pqr-acepto" name="acepto" type="checkbox" required>
+          <label for="pqr-acepto">Autorizo el tratamiento de mis datos para atender esta solicitud, según la <a href="/privacidad" target="_blank" rel="noopener">política de privacidad</a>.</label>
+        </div>
+        <p class="formulario__error" id="pqr-error" role="alert"></p>
+        <button class="boton boton--azul" type="submit" id="pqr-enviar">Radicar solicitud</button>
+      </form>
+      <div class="pqr__resultado" id="pqr-resultado" hidden role="status"></div>
+    </section>
+
+    <section class="pqr" aria-labelledby="titulo-consultar">
+      <h2 id="titulo-consultar">Consultar el estado</h2>
+      <form class="formulario pqr__formulario" id="form-consulta" novalidate>
+        <label for="consulta-radicado">Número de radicado<input id="consulta-radicado" name="radicado" placeholder="PQR-20261023-A1B2" maxlength="20" required autocomplete="off"></label>
+        <label for="consulta-documento">Documento con el que radicaste<input id="consulta-documento" name="documento" inputmode="numeric" maxlength="20" required></label>
+        <p class="formulario__error" id="consulta-error" role="alert"></p>
+        <button class="boton boton--verde-borde" type="submit">Consultar</button>
+      </form>
+      <div class="pqr__resultado" id="consulta-resultado" hidden role="status"></div>
+    </section>
+
+    <p>Para fotos o videos (por ejemplo, en una garantía), envíalos por WhatsApp al +57 301 958 0737 indicando tu número de radicado. Si no quedas satisfecho con nuestra respuesta, puedes acudir a la <a href="https://www.sic.gov.co" target="_blank" rel="noopener">Superintendencia de Industria y Comercio</a>.</p>
+
+  </div>
+</main>
+<footer class="pie">
+  <div class="contenedor pie__legal">
+    <p><a href="/terminos">Términos y condiciones</a> · <a href="/devoluciones">Cambios, devoluciones y garantía</a> · <a href="/privacidad">Privacidad y cookies</a> · <a href="/pqr">Peticiones, quejas y reclamos</a></p>
+    <p>Brayner Alexander Jiménez Muñoz · C.C. 1.104.938.233 · Transversal 11 Sur # 13-65, casa 28, Ibagué, Tolima, Colombia · +57 301 958 0737 · ingenieroespuelistico@gmail.com</p>
+    <p>Protección al consumidor: <a href="https://www.sic.gov.co" target="_blank" rel="noopener">Superintendencia de Industria y Comercio · www.sic.gov.co</a></p>
+  </div>
+</footer>
+<script src="js/pqr.js?v=13" defer></script>
+</body>
+</html>

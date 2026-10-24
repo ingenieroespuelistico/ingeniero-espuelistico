@@ -105,6 +105,13 @@ function datosTecnicos(p) {
   if (p.dureza && p.dureza !== "—") filas.push(["Dureza", p.dureza]);
   if (p.tipo === "espuela") filas.push(["Presentación", Tienda.PRESENTACIONES.map((x) => `${x.nombre.toLowerCase()} (${x.nota.toLowerCase()})`).join(", ")]);
   filas.push([propio(p) ? "Fabricación" : "Origen", propio(p) ? "Taller propio en Ibagué, Colombia" : "Producto seleccionado por nosotros (no es de fabricación propia)"]);
+  // Información exigida para comercio electrónico (Ley 1480, art. 50 lit. b, modificado por la Ley 2439 de 2024)
+  filas.push(["Uso", "Accesorio para gallos. Venta solo a mayores de 18 años."]);
+  filas.push(["Restricciones de uso", "Úsalo conforme a las normas de tu país o municipio, incluidas las de bienestar animal. No se envía a Estados Unidos, sus territorios ni Canadá. Ver <a href=\"/terminos#uso\">términos</a>."]);
+  filas.push(["Cuidados", p.tipo === "espuela" ? "Guárdalas en su empaque, lejos del calor y del sol directo. Tienen punta: manipúlalas con cuidado y fuera del alcance de niños." : "Guárdalo en un lugar fresco y seco, lejos del calor y del sol directo, y fuera del alcance de niños."]);
+  filas.push(["Disponibilidad", "Fabricación continua. Hasta 299 pares se despachan el mismo día hábil si pagas antes de las 4:00 p. m.; desde 300 pares, en 1 a 3 días hábiles."]);
+  filas.push(["Vigencia del precio", "Precios vigentes mientras estén publicados en la tienda."]);
+  filas.push(["Imágenes", "Fotos y modelos 3D de referencia, no a escala."]);
   return `<dl class="pp-datos">${filas.map(([a, b]) => `<div><dt>${esc(a)}</dt><dd>${b}</dd></div>`).join("")}</dl>`;
 }
 
@@ -134,6 +141,8 @@ function pie() {
       <p><a href="/devoluciones">Cambios y devoluciones</a></p>
       <p><a href="/terminos">Términos y condiciones</a></p>
       <p><a href="/privacidad">Privacidad y cookies</a></p>
+      <p><a href="/pqr">Peticiones, quejas y reclamos</a></p>
+      <p class="pie__sic">Protección al consumidor: <a href="https://www.sic.gov.co" target="_blank" rel="noopener">www.sic.gov.co</a></p>
     </div>
   </div>
   <div class="contenedor">${CREDITO}</div>
@@ -306,7 +315,7 @@ reemplazar("catalogo", productos.map((p) => {
 writeFileSync(rutaIndex, index);
 
 /* ---------- 5b. Canónico de las páginas legales (siguen la dirección de NEGOCIO.sitio) ---------- */
-for (const n of ["privacidad", "terminos", "devoluciones"]) {
+for (const n of ["privacidad", "terminos", "devoluciones", "pqr"]) {
   const r = join(sitio, `${n}.html`);
   writeFileSync(r, readFileSync(r, "utf8").replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${absoluta("/" + n)}">`));
 }

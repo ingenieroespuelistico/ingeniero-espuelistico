@@ -3,6 +3,7 @@
 // Notas de voz: Workers AI (enlace "AI") pasa el audio a texto y lo convierte en acciones; nada se aplica sin confirmar.
 
 import { ETAPAS, leerPedido, leerCliente, guardarPedido, registrarCliente, dinero } from "./pedidos.js";
+import { listarPQR, leerPQR, actualizarPQR, TIPOS_PQR, ESTADOS_PQR } from "./pqr.js";
 
 const COOKIE = "ie_admin";
 const DURACION = 30 * 86400;
@@ -61,7 +62,21 @@ export async function atenderAdmin(request, url, env, h) {
   if (!(await sesionValida(request, env))) return h.error("Tu sesión venció. Entra de nuevo.", 401);
 
   const get = request.method === "GET", post = request.method === "POST";
-  if (get && ruta === "inicio") return h.json({ ok: true, etapas: ETAPAS, pedidos: await resumenes(env), hoy: ahoraISO() });
+  if (get && ruta === "inicio") {
+    const pqrs = await listarPQR(env);
+    return h.json({ ok: true, etapas: ETAPAS, pedidos: await resumenes(env), hoy: ahoraISO(), pqrAbiertas: pqrs.filter((q) => q.e === "recibida" || q.e === "en_tramite").length });
+  }
+  if (get && ruta === "pqrs") return h.json({ ok: true, tipos: TIPOS_PQR, estados: ESTADOS_PQR, pqrs: await listarPQR(env) });
+  if (get && ruta === "pqr") {
+    const q = await leerPQR(env, url.searchParams.get("r"));
+    return q ? h.json({ ok: true, pqr: q, tipos: TIPOS_PQR, estados: ESTADOS_PQR }) : h.error("No encontramos esa PQR", 404);
+  }
+  if (post && ruta === "pqr") {
+    const b = await h.leerJSON(request);
+    if (!b) return h.error("Solicitud inválida");
+    const r = await actualizarPQR(env, b.radicado, b);
+    return r.ok ? h.json(r) : h.error(r.error, r.estado || 400);
+  }
   if (get && ruta === "pedido") {
     const p = await leerPedido(env, limpio(url.searchParams.get("id"), 30));
     if (!p) return h.error("No encontramos ese pedido", 404);
