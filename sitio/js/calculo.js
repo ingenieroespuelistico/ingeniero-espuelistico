@@ -48,6 +48,13 @@
 
   const regaloPara = (pares) => [...REGALOS].reverse().find((r) => pares >= r.desde);
 
+  // Envío internacional en dólares (solo países con tarifa fija; los demás se cotizan por WhatsApp)
+  const tieneTarifaInternacional = (iso) => (ENVIO_INTERNACIONAL_USD.paisesConTarifa || []).includes(iso);
+  function envioInternacionalUSD(lista) {
+    const kg = pesoGramos(lista) / 1000;
+    return ENVIO_INTERNACIONAL_USD.base + ENVIO_INTERNACIONAL_USD.porMedioKiloExtra * Math.ceil(Math.max(0, kg - 1) / 0.5);
+  }
+
   function describirLinea(l) {
     const p = prod(l.producto);
     let nombre, base, unidad;
@@ -93,5 +100,6 @@
   g.Calculo = {
     prod, MAX_CANTIDAD, nivelPara, siguienteNivel, paresEspuela, paresPatapioja, precioParPatapioja,
     precioLinea, subtotal, pesoGramos, regaloPara, describirLinea, lineaValida, limpiarLinea,
+    tieneTarifaInternacional, envioInternacionalUSD,
   };
 })(typeof window !== "undefined" ? window : globalThis);

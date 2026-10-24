@@ -250,7 +250,16 @@ const CONTRAENTREGA_MINIMO = 45000;
 
 /* ---------- ENVÍO INTERNACIONAL (esta parte sí va en DÓLARES) ---------- */
 // Panamá y Costa Rica: base + valor por cada medio kilo adicional después del primer kilo.
-const ENVIO_INTERNACIONAL_USD = { base: 25, porMedioKiloExtra: 6, ecuador: "USD 40 a 50" };
+// paisesConTarifa: países donde se usa esa fórmula (códigos de 2 letras). A esos se les puede cobrar por PayPal
+// directamente en la página; a los demás se les cotiza por WhatsApp.
+const ENVIO_INTERNACIONAL_USD = { base: 25, porMedioKiloExtra: 6, ecuador: "USD 40 a 50", paisesConTarifa: ["PA", "CR"] };
+
+/* ---------- PAYPAL (pagos desde otros países, se cobra en DÓLARES) ---------- */
+// activo: true cuando ya estén guardadas las claves de PayPal en Cloudflare (PAYPAL_CLIENT_ID y PAYPAL_SECRET).
+// Los precios en pesos se pasan a dólares con la tasa del día.
+// recargoPorcentaje: porcentaje que se suma al precio en dólares para cubrir la comisión de PayPal y el cambio
+// de moneda (por ejemplo 5). 0 = no se suma nada.
+const PAYPAL = { activo: false, recargoPorcentaje: 0 };
 
 /* ---------- ENVÍO EN COLOMBIA (cotización automática con Envia) ---------- */
 // Siempre se cotiza con UNA transportadora (la del convenio de pago en casa). Si el cliente elige contraentrega,
@@ -402,6 +411,13 @@ const FICHAS = Object.fromEntries(PRODUCTOS.map((p) => [p.id, { descripcion: p.d
 
   const regaloPara = (pares) => [...REGALOS].reverse().find((r) => pares >= r.desde);
 
+  // Envío internacional en dólares (solo países con tarifa fija; los demás se cotizan por WhatsApp)
+  const tieneTarifaInternacional = (iso) => (ENVIO_INTERNACIONAL_USD.paisesConTarifa || []).includes(iso);
+  function envioInternacionalUSD(lista) {
+    const kg = pesoGramos(lista) / 1000;
+    return ENVIO_INTERNACIONAL_USD.base + ENVIO_INTERNACIONAL_USD.porMedioKiloExtra * Math.ceil(Math.max(0, kg - 1) / 0.5);
+  }
+
   function describirLinea(l) {
     const p = prod(l.producto);
     let nombre, base, unidad;
@@ -447,6 +463,7 @@ const FICHAS = Object.fromEntries(PRODUCTOS.map((p) => [p.id, { descripcion: p.d
   g.Calculo = {
     prod, MAX_CANTIDAD, nivelPara, siguienteNivel, paresEspuela, paresPatapioja, precioParPatapioja,
     precioLinea, subtotal, pesoGramos, regaloPara, describirLinea, lineaValida, limpiarLinea,
+    tieneTarifaInternacional, envioInternacionalUSD,
   };
 })(typeof window !== "undefined" ? window : globalThis);
 
@@ -502,5 +519,5 @@ const PREGUNTAS = [
 
 export const Tienda = {
   PRODUCTOS, PRECIOS, AJUSTE_EMPAQUE, CONTRAENTREGA_MINIMO, ENVIO_INTERNACIONAL_USD, ENVIO_NACIONAL,
-  NIVELES, PRESENTACIONES, REGALOS, PULGADAS, NEGOCIO, PREGUNTAS, Calculo: window.Calculo,
+  NIVELES, PRESENTACIONES, REGALOS, PULGADAS, NEGOCIO, PREGUNTAS, PAYPAL, TASAS_RESPALDO, Calculo: window.Calculo,
 };

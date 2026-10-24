@@ -1,4 +1,4 @@
-// Página de regreso desde Mercado Pago: confirma el estado del pago con el servidor (no con la dirección).
+// Página de regreso desde Mercado Pago o PayPal: confirma el estado del pago con el servidor (no con la dirección).
 // Si el pago todavía se está procesando (PSE, por ejemplo), vuelve a preguntar varias veces.
 (async () => {
   "use strict";
@@ -17,6 +17,46 @@
     $("gracias-pedido").textContent = `Pedido ${pedido}`;
     $("gracias-wa").href = `https://wa.me/573019580737?text=${encodeURIComponent("Hola, les escribo por mi pedido " + pedido)}`;
   }
+  // ----- Regreso desde PayPal -----
+  const pp = q.get("pp");
+  if (pp === "cancelado") {
+    pintar("ℹ️", "Cancelaste el pago en PayPal", "No se hizo ningún cobro. Tu pedido sigue en el carrito de la tienda: puedes intentarlo de nuevo o escribirnos por WhatsApp.");
+    return;
+  }
+  if (pp === "1") {
+    const ordenPP = limpio(q.get("token"));
+    if (!/^[A-Z0-9]{8,40}$/.test(ordenPP)) { pintar("ℹ️", "No se completó el pago", "Si ya pagaste en PayPal, escríbenos con tu número de pedido y lo confirmamos."); return; }
+    pintar("⏳", "Confirmando tu pago con PayPal…", "No cierres esta página; tarda unos segundos.");
+    let d = null;
+    for (let intento = 0; intento < 3 && !(d && d.ok); intento++) {
+      try {
+        const r = await fetch("/api/paypal/capturar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orden: ordenPP, pedido }) });
+        d = await r.json();
+        if (r.status === 404) break;
+      } catch (e) { d = null; }
+      if (!(d && d.ok)) await espera(2500);
+    }
+    const usd = (n) => "USD " + Number(n || 0).toFixed(2);
+    if (d && d.ok && d.estado === "approved") {
+      pintar("✅", "¡Pago recibido y verificado!", `PayPal confirmó tu pago de ${usd(d.total)}. Preparamos tu envío internacional y te escribimos por WhatsApp con la guía. PayPal también te envió el comprobante a tu correo.`);
+      document.body.classList.add("gracias--ok");
+      try { localStorage.removeItem("ie-pedido"); sessionStorage.removeItem("ie-ultimo-pedido"); } catch (e) {}
+      const ya = `ie-compra-${d.pedido}`;
+      let contada = false;
+      try { contada = localStorage.getItem(ya) === "1"; localStorage.setItem(ya, "1"); } catch (e) {}
+      if (!contada && window.Medicion) Medicion.evento("Purchase", { value: Number(d.total), currency: "USD" });
+    } else if (d && d.ok && d.estado === "sin_pagar") {
+      pintar("ℹ️", "No se completó el pago", "PayPal no registra la aprobación del pago y no se hizo ningún cobro. Tu pedido sigue en el carrito: puedes intentarlo de nuevo o escribirnos.");
+    } else if (d && d.ok && d.estado === "pending") {
+      pintar("⏳", "Tu pago está en revisión", "PayPal está revisando el pago. En cuanto lo apruebe te escribimos por WhatsApp; no tienes que pagar de nuevo.");
+    } else if (d && d.ok) {
+      pintar("❌", "El pago no se aprobó", "PayPal no aprobó el pago y no se hizo ningún cobro. Puedes intentarlo con otra tarjeta o escribirnos.");
+    } else {
+      pintar("⏳", "Estamos confirmando tu pago", "Si ya aprobaste el pago en PayPal, lo confirmamos en pocos minutos y te escribimos por WhatsApp. Si quieres, escríbenos con tu número de pedido.");
+    }
+    return;
+  }
+
   if (!/^\d+$/.test(pago) && !/^\d+$/.test(orden)) {
     pintar("ℹ️", "No se completó el pago", "Si cerraste la ventana de Mercado Pago antes de pagar, tu pedido sigue guardado en la tienda y puedes intentarlo de nuevo. Si ya pagaste, escríbenos con tu número de pedido y lo confirmamos.");
     return;

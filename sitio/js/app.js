@@ -380,6 +380,8 @@
   // Países a los que no se envía (ver NEGOCIO.paisesSinEnvio en datos.js)
   const paisSinEnvio = () => { const iso = ubicacionPedido ? ubicacionPedido.iso() : "CO"; return (NEGOCIO.paisesSinEnvio || {})[iso] || ""; };
   const AVISO_SIN_ENVIO = (n) => `No enviamos a ${n}. Las leyes de Estados Unidos (incluidos Puerto Rico y sus demás territorios) y de Canadá restringen la importación de espuelas y accesorios para gallos, así que no podemos despachar pedidos a esos destinos.`;
+  const isoPedido = () => (ubicacionPedido ? ubicacionPedido.iso() : "CO");
+  const paypalDirecto = () => typeof PAYPAL !== "undefined" && PAYPAL.activo && C.tieneTarifaInternacional(isoPedido());
   function pintarPagos() {
     const pais = ubicacionPedido ? ubicacionPedido.paisNombre() : "Colombia";
     const caja = $("#opciones-pago");
@@ -401,8 +403,8 @@
         <label class="opcion" aria-disabled="${!habilitada}"><input type="radio" name="pago" value="Contraentrega" ${habilitada ? "" : "disabled"}> Contraentrega: pagas el envío en línea y los productos al recibir${habilitada ? "" : ` (desde ${pesos(NEGOCIO.contraentregaMinimo)})`}</label>`;
     } else {
       caja.innerHTML = `<legend>¿Cómo quieres pagar?</legend>
-        <label class="opcion"><input type="radio" name="pago" value="PayPal" checked> PayPal</label>
-        <label class="opcion"><input type="radio" name="pago" value="Western Union"> Western Union</label>`;
+        <label class="opcion"><input type="radio" name="pago" value="PayPal" checked> PayPal${paypalDirecto() ? ": pagas aquí mismo en dólares, con tu cuenta PayPal o tarjeta" : " (te enviamos el enlace de pago por WhatsApp con el envío incluido)"}</label>
+        <label class="opcion"><input type="radio" name="pago" value="Western Union"> Western Union (te enviamos los datos por WhatsApp)</label>`;
     }
     const elegir = caja.querySelector(`input[name=pago][value="${previo}"]:not([disabled])`);
     if (elegir) elegir.checked = true;
@@ -412,9 +414,12 @@
   // El botón dice a dónde lleva según la forma de pago
   function textoConfirmar() {
     const pago = ($("#opciones-pago input[name=pago]:checked") || {}).value || "";
+    const pp = pago === "PayPal" && paypalDirecto();
     $("#boton-confirmar-texto").textContent = pago.startsWith("Pago en línea") ? "Confirmar pedido e ir a pago seguro"
-      : pago === "Contraentrega" ? "Confirmar contraentrega y pagar el envío" : `Confirmar pedido y pagar por ${pago}`;
-    $("#sello-pago").hidden = !(pago.startsWith("Pago en línea") || pago === "Contraentrega");
+      : pago === "Contraentrega" ? "Confirmar contraentrega y pagar el envío" : pp ? "Confirmar pedido e ir a PayPal" : `Enviar pedido por WhatsApp para pagar con ${pago}`;
+    $("#sello-pago").hidden = !(pago.startsWith("Pago en línea") || pago === "Contraentrega" || pp);
+    const sello = $("#sello-texto");
+    if (sello) sello.textContent = pp ? "Pago protegido por PayPal · Tus datos de pago no pasan por nuestra página" : "Pago protegido por Mercado Pago · Tus datos de pago no pasan por nuestra página";
   }
   // Al cambiar la forma de pago se vuelve a cotizar: la contraentrega incluye el costo del recaudo
   $("#opciones-pago").addEventListener("change", () => { textoConfirmar(); actualizarEnvio(); });
@@ -508,7 +513,15 @@
     const celda = $("[data-envio]"), filaTotal = $("[data-fila-total]");
     if (!celda) return;
     const contra = pagoElegido() === "Contraentrega";
-    if (!esColombia()) { celda.textContent = "Te lo cotizamos por WhatsApp"; filaTotal.hidden = true; return; }
+    if (!esColombia()) {
+      if (C.tieneTarifaInternacional(isoPedido()) && pedido.length) {
+        const envioUSD = C.envioInternacionalUSD(pedido);
+        celda.innerHTML = `USD ${envioUSD} <small>puerta a puerta</small>`;
+        filaTotal.hidden = false;
+        $("[data-total]").textContent = `${pesosCOP(subtotal())} COP + USD ${envioUSD} de envío${paypalDirecto() ? " · PayPal te muestra el total exacto en dólares" : ""}`;
+      } else { celda.textContent = "Te lo cotizamos por WhatsApp"; filaTotal.hidden = true; }
+      return;
+    }
     if (cotizacion.estado === "cargando") { celda.textContent = "Calculando…"; filaTotal.hidden = true; return; }
     if (cotizacion.estado === "listo" && cotizacion.clave === claveEnvio()) {
       const d = cotizacion.datos;
@@ -579,6 +592,11 @@
     // En Colombia: pago en línea o contraentrega por Mercado Pago (el servidor recalcula precios y envío)
     if (esColombia() && ((d.pago || "").startsWith("Pago en línea") || d.pago === "Contraentrega")) {
       irAPagar(d, cel.numeroE164, texto);
+      return;
+    }
+    // Panamá y Costa Rica (países con tarifa fija): PayPal directo, en dólares
+    if (!esColombia() && d.pago === "PayPal" && paypalDirecto()) {
+      irAPaypal(d, cel.numeroE164, texto);
       return;
     }
     window.Medicion && Medicion.evento("InitiateCheckout", { value: Math.round(subtotal()), num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
@@ -665,6 +683,37 @@
       if (window.turnstile && turnstileId !== null) { turnstileError = ""; window.turnstile.reset(turnstileId); }
       boton.disabled = false; etiqueta.textContent = textoAntes;
     }
+  }
+  async function irAPaypal(d, celular, textoWA) {
+    const boton = $("#boton-confirmar"), etiqueta = $("#boton-confirmar-texto"), error = $("#error-formulario");
+    const textoAntes = etiqueta.textContent;
+    boton.disabled = true; etiqueta.textContent = "Abriendo PayPal…";
+    try {
+      const verificacion = await tokenTurnstile(etiqueta);
+      etiqueta.textContent = "Abriendo PayPal…";
+      let r;
+      try {
+        r = await fetch("/api/paypal/crear", {
+          method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout ? AbortSignal.timeout(25000) : undefined,
+          body: JSON.stringify({
+            verificacion, pedido, acepto: $("#pedido-acepto").checked,
+            cliente: { nombre: d.nombre, documento: d.documento, celular, pais: isoPedido(), region: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
+          }),
+        });
+      } catch (e) { throw new Error("La conexión tardó demasiado."); }
+      const res = await r.json().catch(() => ({ ok: false, error: r.status === 429 ? "Muchos intentos seguidos. Espera un minuto." : "No pudimos abrir PayPal en este momento." }));
+      if (!res.ok || !res.url || !/^https:\/\/(www\.)?(sandbox\.)?paypal\.com\//.test(res.url)) throw new Error(res.error || "No pudimos abrir PayPal.");
+      try { sessionStorage.setItem("ie-ultimo-pedido", JSON.stringify({ pedido: res.pedido, total: res.total, moneda: "USD" })); } catch (e) {}
+      window.Medicion && Medicion.evento("InitiateCheckout", { value: res.total, currency: "USD", num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
+      location.href = res.url;
+    } catch (e) {
+      error.innerHTML = `${escapar(e.message)} <a class="error__wa" href="${enlaceWA(textoWA)}" target="_blank" rel="noopener">Enviar este pedido por WhatsApp</a>`;
+      if (window.turnstile && turnstileId !== null) { turnstileError = ""; window.turnstile.reset(turnstileId); }
+      boton.disabled = false; etiqueta.textContent = textoAntes;
+    }
+  }
+  if (typeof PAYPAL !== "undefined" && PAYPAL.activo && $("#aviso-pago")) {
+    $("#aviso-pago").textContent = "En Colombia pagas aquí mismo con Mercado Pago. Desde Panamá y Costa Rica pagas aquí mismo con PayPal, en dólares. Desde otros países te cotizamos el envío por WhatsApp y pagas con PayPal o Western Union.";
   }
   // Si el cliente vuelve con "Atrás" desde Mercado Pago, el botón no queda bloqueado
   addEventListener("pageshow", (e) => { if (e.persisted) { $("#boton-confirmar").disabled = Boolean(paisSinEnvio()); textoConfirmar(); } });

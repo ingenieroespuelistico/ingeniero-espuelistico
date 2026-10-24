@@ -6,12 +6,15 @@
 //   POST /api/mp-webhook   → aviso de Mercado Pago cuando cambia un pago → mensaje a Telegram
 //   GET  /api/estado       → estado de un pago (para la página de "gracias")
 //   GET  /api/salud        → revisa que los secretos estén guardados
+//   POST /api/paypal/crear     → pedido desde otro país: crea la orden de PayPal (en dólares)
+//   POST /api/paypal/capturar  → cuando el cliente vuelve de PayPal: cobra la orden y avisa por Telegram
 //   Tarea programada (cada 20 min) → avisa por Telegram los carritos que quedaron sin pagar
 
 import { Tienda } from "./catalogo.generado.js";
 import { registrarPedidoWeb, registrarPago, revisarAbandonados } from "./pedidos.js";
+import { paypalListo, crearOrden, capturarOrden, consultarOrden, ESTADO_PAYPAL } from "./paypal.js";
 
-const VERSION = "2026-10-23.4";
+const VERSION = "2026-10-23.5";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -59,6 +62,15 @@ export default {
         if (!(await dentroDelLimite(request, env, ruta))) return error("Demasiadas solicitudes", 429);
         return await estadoPago(url, env);
       }
+      if (ruta === "/api/paypal/crear" || ruta === "/api/paypal/capturar") {
+        if (request.method !== "POST") return error("Método no permitido", 405);
+        if (!mismoOrigen(request, url)) return error("Origen no permitido", 403);
+        if (!(await dentroDelLimite(request, env, ruta))) return error("Demasiadas solicitudes. Espera un minuto e intenta de nuevo.", 429);
+        const cuerpo = await leerJSON(request);
+        if (!cuerpo) return error("Solicitud inválida");
+        if (ruta === "/api/paypal/crear") return await crearPedidoPaypal(cuerpo, url, env, request);
+        return await capturarPaypal(cuerpo, env);
+      }
       if (ruta === "/api/cotizar" || ruta === "/api/pedido") {
         if (request.method !== "POST") return error("Método no permitido", 405);
         if (!mismoOrigen(request, url)) return error("Origen no permitido", 403);
@@ -77,7 +89,7 @@ export default {
   },
   // Tarea programada (ver "triggers" en wrangler.jsonc)
   async scheduled(evento, env, ctx) {
-    ctx.waitUntil(revisarAbandonados(env, (mensaje, silencioso) => telegram(env, mensaje, silencioso))
+    ctx.waitUntil(revisarAbandonados(env, (mensaje, silencioso) => telegram(env, mensaje, silencioso), Date.now(), { rescatar: (p) => rescatarPaypal(env, p) })
       .then((r) => console.log("carritos abiertos", JSON.stringify(r)))
       .catch((e) => console.error("revisarAbandonados", e && e.stack || e)));
   },
@@ -412,6 +424,129 @@ async function telegram(env, mensaje, silencioso = false) {
   return r.ok;
 }
 
+/* ---------------- PayPal (otros países, en dólares) ---------------- */
+// Tasa del dólar en pesos: se consulta y se guarda 6 horas. Si falla, se usa la de respaldo de precios.js.
+async function tasaDolar(env) {
+  const respaldo = Number(Tienda.TASAS_RESPALDO.porDolar.COP);
+  const valida = (v) => Number.isFinite(v) && v > 0 && Math.abs(v / respaldo - 1) < 0.3;
+  try {
+    if (env.PEDIDOS) { const g = Number(await env.PEDIDOS.get("tasa:COP")); if (valida(g)) return g; }
+    const r = await fetchT("https://open.er-api.com/v6/latest/USD", {}, 5000);
+    const v = Number(((await r.json()) || {}).rates?.COP);
+    if (valida(v)) { if (env.PEDIDOS) await env.PEDIDOS.put("tasa:COP", String(v), { expirationTtl: 6 * 3600 }); return v; }
+  } catch (e) { console.log("tasa del dólar", e && e.message); }
+  return respaldo;
+}
+const nombrePais = (iso) => { try { return new Intl.DisplayNames(["es"], { type: "region" }).of(iso); } catch { return iso; } };
+const dolares = (n) => `USD ${Number(n || 0).toFixed(2)}`;
+
+async function crearPedidoPaypal(cuerpo, url, env, request) {
+  if (!Tienda.PAYPAL.activo || !paypalListo(env)) return error("El pago con PayPal todavía no está disponible. Escríbenos por WhatsApp.", 503);
+  const lineas = lineasLimpias(cuerpo.pedido);
+  if (!lineas) return error("El pedido no es válido. Recarga la página e intenta de nuevo.");
+  const c = cuerpo.cliente || {};
+  const cliente = {
+    nombre: texto(c.nombre, 80), documento: texto(c.documento, 20).replace(/[^0-9A-Za-z-]/g, ""),
+    celular: texto(c.celular, 20).replace(/[^\d+]/g, ""), pais: texto(c.pais, 2).toUpperCase(),
+    departamento: texto(c.region, 80), ciudad: texto(c.ciudad, 80), direccion: texto(c.direccion, 150),
+  };
+  if (!/^[A-Z]{2}$/.test(cliente.pais) || cliente.pais === "CO") return error("Elige tu país.");
+  if ((Tienda.NEGOCIO.paisesSinEnvio || {})[cliente.pais]) return error("No enviamos a ese país por restricciones de importación.");
+  if (!C.tieneTarifaInternacional(cliente.pais)) return error("Para tu país cotizamos el envío por WhatsApp.");
+  if (!cliente.nombre || !cliente.documento || cliente.celular.length < 8 || !cliente.departamento || !cliente.ciudad || !cliente.direccion) {
+    return error("Faltan datos de envío. Revisa nombre, documento, celular, región, ciudad y dirección.");
+  }
+  if (cuerpo.acepto !== true) return error("Debes autorizar el tratamiento de tus datos.");
+  if (!(await humanoVerificado(request, env, cuerpo.verificacion))) return error("No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.", 403);
+
+  const tasa = await tasaDolar(env);
+  const recargo = Math.max(0, Number(Tienda.PAYPAL.recargoPorcentaje) || 0);
+  const subtotal = Math.round(C.subtotal(lineas));
+  const items = lineas.map((l) => {
+    const d = C.describirLinea(l), cop = C.precioLinea(l, lineas).total;
+    return { nombre: `${d.nombre} (${d.detalle})`, centavos: Math.round((cop / tasa) * (1 + recargo / 100) * 100), cop };
+  });
+  const envioUSD = C.envioInternacionalUSD(lineas);
+  const pesoKg = Math.round(C.pesoGramos(lineas) / 10) / 100;
+  const id = idPedido();
+  const orden = await crearOrden(env, { id, lineas: items, envioCentavos: Math.round(envioUSD * 100), cliente: { ...cliente, region: cliente.departamento }, origen: url.origin })
+    .catch((e) => { console.error("PayPal", e && e.message); return null; });
+  if (!orden) return error("No pudimos abrir PayPal en este momento. Intenta de nuevo o escríbenos por WhatsApp.", 502);
+  const total = orden.totalCentavos / 100;
+  const regalo = C.regaloPara(C.paresEspuela(lineas));
+  if (env.PEDIDOS) {
+    const ahora = new Date().toISOString();
+    await registrarPedidoWeb(env, {
+      id, fecha: ahora, canal: "web", etapa: "por_pagar", tipo: "paypal", metodo: "paypal", moneda: "USD",
+      total, valorPedido: Math.round(subtotal + envioUSD * tasa), subtotal, tasa, recargoPorcentaje: recargo,
+      lineas, productos: items.map((x) => `${x.nombre} = ${pesos(x.cop)} (${dolares(x.centavos / 100)})`), regalo: regalo ? `${regalo.pares} pares de patapioja sintética` : "",
+      envio: { valor: envioUSD, moneda: "USD", detalle: `Internacional puerta a puerta a ${nombrePais(cliente.pais)}`, pesoKg },
+      cliente: { ...cliente, destino: `${cliente.direccion}, ${cliente.ciudad}, ${cliente.departamento} (${nombrePais(cliente.pais)})` },
+      paypalOrden: orden.orden, pagos: [], historial: [{ fecha: ahora, texto: `Pedido creado en la página; enviado a PayPal (orden ${orden.orden})` }],
+    }).catch((e) => console.error("KV pedido PayPal", e && e.message));
+  }
+  return json({ ok: true, pedido: id, total, moneda: "USD", url: orden.url });
+}
+
+// Guarda el resultado de PayPal en la base y avisa por Telegram (una vez por estado)
+async function registrarPagoPaypal(env, r) {
+  // Sin cobro y sin aprobación del cliente: no hay pago que registrar (el pedido sigue por pagar)
+  if (!r.captura && !["APPROVED", "COMPLETED"].includes(r.estadoOrden)) return "sin_pagar";
+  const estado = ESTADO_PAYPAL[r.estado] || (r.estadoOrden === "APPROVED" ? "rejected" : "pending");
+  const pagoMP = {
+    id: r.captura || r.orden, status: estado, status_detail: r.problema || r.estado, payment_method_id: "paypal",
+    transaction_amount: r.monto, external_reference: r.pedido, metadata: { pedido: r.pedido }, date_created: new Date().toISOString(),
+    live_mode: String(env.PAYPAL_MODO || "").toLowerCase() === "live",
+  };
+  const p = env.PEDIDOS ? await registrarPago(env, pagoMP) : null;
+  if (!["approved", "pending"].includes(estado)) return estado;
+  const clave = `aviso:pp:${pagoMP.id}:${estado}`;
+  if (await yaAvisado(env, clave)) return estado;
+  const cl = (p && p.cliente) || {};
+  const mensaje = [
+    estado === "approved" ? "✅ <b>PAGO APROBADO · PAYPAL</b>" : "⏳ <b>PAGO PENDIENTE · PAYPAL</b> (PayPal lo está revisando; no despaches todavía)",
+    `Pedido: <b>${esc(r.pedido)}</b>${pagoMP.live_mode ? "" : " · PRUEBA (sandbox)"}`,
+    `Pagado: <b>${dolares(r.monto)}</b> por PayPal${p && p.tasa ? ` (≈ ${pesos(r.monto * p.tasa)} COP)` : ""}`,
+    "",
+    p ? `<b>Productos</b>\n${esc((p.productos || []).map((x) => "• " + x).join("\n"))}` : null,
+    p && p.regalo ? `🎁 Regalo: ${esc(p.regalo)}` : null,
+    p ? `🌎 Envío: ${esc(p.envio.detalle)} (${dolares(p.envio.valor)}, ${esc(p.envio.pesoKg)} kg)` : null,
+    "",
+    p ? `<b>Cliente</b>: ${esc(cl.nombre)} · Doc. ${esc(cl.documento)}` : null,
+    p ? `📱 ${esc(cl.celular)}` : null,
+    p ? `📍 ${esc(cl.destino)}` : null,
+    r.pagador && r.pagador.correo ? `✉️ PayPal: ${esc(r.pagador.correo)}` : null,
+    `Orden PayPal ${esc(r.orden)}${r.captura ? ` · cobro ${esc(r.captura)}` : ""}`,
+    "",
+    estado === "approved" ? "👉 Siguiente paso: despacha por envío internacional y envíale la guía al cliente por WhatsApp." : null,
+  ].filter((x) => x !== null).join("\n");
+  if (await telegram(env, mensaje)) await marcarAvisado(env, clave);
+  return estado;
+}
+
+async function capturarPaypal(cuerpo, env) {
+  if (!paypalListo(env)) return error("PayPal no está configurado.", 503);
+  const orden = String(cuerpo.orden || "");
+  if (!/^[A-Z0-9]{8,40}$/.test(orden)) return error("Orden no válida");
+  const r = await capturarOrden(env, orden).catch((e) => { console.error("PayPal capturar", e && e.message); return { ok: false }; });
+  if (!r.ok) return error("No pudimos confirmar el pago con PayPal. Si ya pagaste, escríbenos con tu número de pedido.", 502);
+  if (!/^IE-\d{8}-[0-9A-F]{6}$/.test(r.pedido) || (cuerpo.pedido && cuerpo.pedido !== r.pedido)) return error("No encontramos ese pago", 404);
+  const estado = await registrarPagoPaypal(env, r);
+  return json({ ok: true, estado, pedido: r.pedido, total: r.monto, moneda: "USD" });
+}
+
+// Tarea programada: si el cliente aprobó en PayPal pero cerró la página antes de volver, se cobra aquí
+async function rescatarPaypal(env, p) {
+  if (p.metodo !== "paypal" || !p.paypalOrden || !paypalListo(env)) return false;
+  const o = await consultarOrden(env, p.paypalOrden).catch(() => null);
+  if (!o || !o.ok) return false;
+  if (o.d.status === "APPROVED" || o.d.status === "COMPLETED") {
+    const r = await capturarOrden(env, p.paypalOrden).catch(() => null);
+    if (r && r.ok && r.pedido === p.id) { const e = await registrarPagoPaypal(env, r); return e === "approved" || e === "pending"; }
+  }
+  return false;
+}
+
 /* ---------------- Estado del pago (página de gracias) ---------------- */
 async function estadoPago(url, env) {
   let id = url.searchParams.get("pago") || "";
@@ -453,7 +588,7 @@ async function humanoVerificado(request, env, token) {
 
 /* ---------------- Salud ---------------- */
 async function salud(url, env) {
-  const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TURNSTILE_SECRET"];
+  const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TURNSTILE_SECRET", "PAYPAL_CLIENT_ID", "PAYPAL_SECRET", "ADMIN_CLAVE", "GOOGLE_CUENTA_SERVICIO"];
   // Sin la clave privada (SALUD_CLAVE) solo se muestra que está en línea
   if (!env.SALUD_CLAVE || url.searchParams.get("clave") !== env.SALUD_CLAVE) return json({ ok: true, version: VERSION });
   const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, base: Boolean(env.PEDIDOS), secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };

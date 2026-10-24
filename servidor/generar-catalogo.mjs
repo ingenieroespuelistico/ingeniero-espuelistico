@@ -30,7 +30,7 @@ const window = {};
 ${partes.join("\n")}
 export const Tienda = {
   PRODUCTOS, PRECIOS, AJUSTE_EMPAQUE, CONTRAENTREGA_MINIMO, ENVIO_INTERNACIONAL_USD, ENVIO_NACIONAL,
-  NIVELES, PRESENTACIONES, REGALOS, PULGADAS, NEGOCIO, PREGUNTAS, Calculo: window.Calculo,
+  NIVELES, PRESENTACIONES, REGALOS, PULGADAS, NEGOCIO, PREGUNTAS, PAYPAL, TASAS_RESPALDO, Calculo: window.Calculo,
 };
 `;
 writeFileSync(join(raiz, "servidor", "catalogo.generado.js"), salida);

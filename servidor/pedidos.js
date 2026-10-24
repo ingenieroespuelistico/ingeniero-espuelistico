@@ -141,6 +141,8 @@ const MOTIVOS_RECHAZO = {
 };
 const hace = (ms) => { const min = Math.round(ms / MINUTO); return min < 90 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`; };
 const pesos = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-CO");
+// Valor del pedido en su moneda (los de PayPal van en dólares)
+export const dinero = (p, n = p.total) => (p.moneda === "USD" ? `USD ${Number(n || 0).toFixed(2)}` : pesos(n));
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // Hora de Colombia (UTC-5): de 9 p. m. a 7 a. m. los avisos llegan sin sonido
@@ -151,8 +153,9 @@ function mensajeRecuperacion(p, edadMs) {
   const vence = p.pagoVence ? new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", weekday: "long", hour: "numeric", minute: "2-digit" }).format(new Date(p.pagoVence)) : "";
   const paraCliente = [
     `Hola${nombre ? " " + nombre : ""}, te escribimos de Ingeniero Espuelístico.`,
-    `Vimos que tu pedido ${p.id} por ${pesos(p.total)} quedó sin pagar. ¿Tuviste algún inconveniente con el pago?`,
+    `Vimos que tu pedido ${p.id} por ${dinero(p)} quedó sin pagar. ¿Tuviste algún inconveniente con el pago?`,
     p.pagoUrl ? `Si quieres terminarlo, este es tu enlace de pago seguro de Mercado Pago${vence ? ` (vale hasta el ${vence})` : ""}: ${p.pagoUrl}` : "",
+    p.metodo === "paypal" ? "Si quieres, te enviamos un enlace nuevo de PayPal para terminarlo." : "",
     "Si prefieres otra forma de pago, dinos y te ayudamos.",
   ].filter(Boolean).join("\n\n");
   const cel = String((p.cliente && p.cliente.celular) || "").replace(/\D/g, "");
@@ -160,9 +163,9 @@ function mensajeRecuperacion(p, edadMs) {
   const rechazado = (p.pagos || []).filter((x) => x.estado === "rejected").pop();
   return [
     `🛒 <b>CARRITO SIN PAGAR</b> (lo dejó hace ${hace(edadMs)})`,
-    `Pedido: <b>${esc(p.id)}</b> · ${p.tipo === "contraentrega" ? "contraentrega (iba a pagar el envío)" : "pago en línea"}`,
-    `Total que iba a pagar: <b>${pesos(p.total)}</b>${p.tipo === "contraentrega" ? ` (y ${pesos(p.cobrarAlRecibir)} al recibir)` : ""}`,
-    rechazado ? `⚠️ Intentó pagar y Mercado Pago lo rechazó: ${esc(MOTIVOS_RECHAZO[rechazado.detalle] || rechazado.detalle || "sin detalle")}` : null,
+    `Pedido: <b>${esc(p.id)}</b> · ${p.tipo === "contraentrega" ? "contraentrega (iba a pagar el envío)" : p.metodo === "paypal" ? "PayPal (dólares)" : "pago en línea"}`,
+    `Total que iba a pagar: <b>${dinero(p)}</b>${p.tipo === "contraentrega" ? ` (y ${pesos(p.cobrarAlRecibir)} al recibir)` : ""}`,
+    rechazado ? `⚠️ Intentó pagar y ${p.metodo === "paypal" ? "PayPal" : "Mercado Pago"} lo rechazó: ${esc(MOTIVOS_RECHAZO[rechazado.detalle] || rechazado.detalle || "sin detalle")}` : null,
     "",
     `<b>Productos</b>\n${esc((p.productos || []).map((x) => "• " + x).join("\n"))}`,
     "",
@@ -174,7 +177,8 @@ function mensajeRecuperacion(p, edadMs) {
 }
 
 // Revisa los carritos abiertos. avisar(mensaje, silencioso) debe devolver true si el aviso salió.
-export async function revisarAbandonados(env, avisar, ahora = Date.now()) {
+// opciones.rescatar(pedido): para PayPal, revisa si el cliente aprobó y no volvió a la página (y lo cobra); true = resuelto.
+export async function revisarAbandonados(env, avisar, ahora = Date.now(), opciones = {}) {
   if (!env.PEDIDOS) return { revisados: 0, avisados: 0 };
   const lista = [];
   let cursor;
@@ -197,11 +201,18 @@ export async function revisarAbandonados(env, avisar, ahora = Date.now()) {
     const id = k.name.slice("abierto:".length);
     const f = Date.parse((k.metadata && k.metadata.f) || 0) || 0;
     const edad = ahora - f;
-    if (edad < RECUPERACION.esperarMinutos * MINUTO) continue; // todavía puede estar pagando
     const cel = (k.metadata && k.metadata.c) || k.name;
     const borrar = () => env.PEDIDOS.delete(k.name);
+    if (edad < 15 * MINUTO) continue; // todavía puede estar pagando
+    let p = null;
+    // PayPal: si ya aprobó pero no volvió a la página, se cobra sin esperar la hora
+    if (opciones.rescatar && edad < RECUPERACION.maximoHoras * 3600 * 1000) {
+      p = await leerPedido(env, id);
+      if (p && p.metodo === "paypal" && p.etapa === "por_pagar" && (await opciones.rescatar(p).catch(() => false))) { await borrar(); continue; }
+    }
+    if (edad < RECUPERACION.esperarMinutos * MINUTO) continue;
     if (edad > RECUPERACION.maximoHoras * 3600 * 1000 || masReciente[cel].name !== k.name) { await borrar(); continue; }
-    const p = await leerPedido(env, id);
+    p = p || (await leerPedido(env, id));
     if (!p || p.etapa !== "por_pagar" || (p.pagos || []).some((x) => ["approved", "pending", "in_process"].includes(x.estado))) { await borrar(); continue; }
     // ¿Compró después por otro pedido?
     const c = cel ? await leerCliente(env, cel) : null;
