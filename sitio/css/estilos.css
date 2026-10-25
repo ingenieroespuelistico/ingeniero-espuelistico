@@ -228,6 +228,12 @@ section { padding: 72px 0; }
 .opcion { display: flex !important; grid-template-columns: none; align-items: flex-start; gap: 10px; font-weight: 500 !important; }
 .opcion input { width: 20px; height: 20px; min-height: 0; margin-top: 3px; }
 .opcion[aria-disabled="true"] { opacity: .5; }
+.opciones-envio[hidden], .opciones-envio__nota[hidden] { display: none; }
+.opcion-envio { justify-content: space-between; }
+.opcion-envio__texto { flex: 1; display: grid; gap: 2px; }
+.opcion-envio__texto small { color: var(--tinta-suave); font-weight: 400; }
+.opcion-envio__precio { font-weight: 800; white-space: nowrap; }
+.opciones-envio__nota { font-size: .82rem; color: var(--tinta-suave); margin: 0; }
 .nota-envio { font-size: .92rem; color: var(--tinta-suave); background: var(--papel); border-radius: 8px; padding: 10px 12px; }
 .formulario__error { color: var(--azul-oscuro); font-weight: 600; margin: 0; min-height: 1em; }
 .formulario__aviso { font-size: .85rem; color: var(--tinta-suave); margin: 0; }

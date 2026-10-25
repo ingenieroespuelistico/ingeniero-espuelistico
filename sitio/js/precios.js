@@ -54,10 +54,17 @@ const AJUSTE_EMPAQUE = { bolsa: 0, caja: 300, granel: -200 };
 const CONTRAENTREGA_MINIMO = 45000;
 
 /* ---------- ENVÍO INTERNACIONAL (esta parte sí va en DÓLARES) ---------- */
-// Panamá y Costa Rica: base + valor por cada medio kilo adicional después del primer kilo.
-// paisesConTarifa: países donde se usa esa fórmula (códigos de 2 letras). A esos se les puede cobrar por PayPal
-// directamente en la página; a los demás se les cotiza por WhatsApp.
-const ENVIO_INTERNACIONAL_USD = { base: 25, porMedioKiloExtra: 6, ecuador: "USD 40 a 50", paisesConTarifa: ["PA", "CR"] };
+// ENVÍO PROPIO (Panamá y Costa Rica): base + valor por cada medio kilo adicional después del primer kilo.
+// paisesConTarifa: países donde se ofrece el envío propio (códigos de 2 letras).
+// DHL: a todos los demás países (y como segunda opción en Panamá y Costa Rica) se cotiza en vivo con Envia
+// el servicio de DHL más barato. El cliente paga por PayPal en la misma página.
+//   recargoUSD: dólares que se suman a la tarifa de DHL (por ejemplo, la caja o la comisión). 0 = nada
+//   redondearA: la tarifa se redondea hacia arriba a este múltiplo de dólares (1 → 37,20 queda en 38)
+//   impuestos: quién paga los impuestos y trámites de aduana del país de destino. "recipient" = quien recibe
+const ENVIO_INTERNACIONAL_USD = {
+  base: 25, porMedioKiloExtra: 6, ecuador: "USD 40 a 50", paisesConTarifa: ["PA", "CR"],
+  dhl: { activo: true, transportadora: "dhl", recargoUSD: 0, redondearA: 1, impuestos: "recipient" },
+};
 
 /* ---------- PAYPAL (pagos desde otros países, se cobra en DÓLARES) ---------- */
 // activo: true cuando ya estén guardadas las claves de PayPal en Cloudflare (PAYPAL_CLIENT_ID y PAYPAL_SECRET).

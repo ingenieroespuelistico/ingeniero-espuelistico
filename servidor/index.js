@@ -23,7 +23,7 @@ import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-23.12";
+const VERSION = "2026-10-25.1";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -244,9 +244,104 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario, contr
   };
 }
 
+/* ---------------- Envío internacional: envío propio (PA, CR) y DHL cotizado con Envia ---------------- */
+// Partidas arancelarias aproximadas (las pide la aduana en la factura comercial de DHL)
+const PARTIDA = { metalica: "732690", cera: "340490", esparadrapo: "300510" }; // el resto son plásticos: 392690
+const partida = (id) => PARTIDA[id] || "392690";
+
+// Datos del destino que llegan de la página (país, región, ciudad, código postal)
+function destinoInternacional(c) {
+  return {
+    pais: texto(c.pais, 2).toUpperCase(), region: texto(c.region, 80), ciudad: texto(c.ciudad, 80),
+    postal: texto(c.postal, 12).replace(/[^0-9A-Za-z -]/g, "").trim(),
+    nombre: texto(c.nombre, 60), celular: texto(c.celular, 20).replace(/\D/g, ""), direccion: texto(c.direccion, 100),
+  };
+}
+
+// Tarifa de DHL (la más barata de sus servicios) en dólares. Devuelve { ok, usd, servicio, dias, ... } o { ok:false, error }
+async function fleteDHL(lineas, dest, env) {
+  const cfg = Tienda.ENVIO_INTERNACIONAL_USD.dhl || {};
+  if (!cfg.activo || !env.ENVIA_TOKEN) return { ok: false, error: "Por ahora te cotizamos el envío por WhatsApp." };
+  const gramos = C.pesoGramos(lineas);
+  const caja = cajaPara(gramos);
+  const kg = Math.max(0.5, Math.ceil(gramos / 100) / 10);
+  const tasa = await tasaDolar(env);
+  const usdDe = (cop) => Math.max(0.5, Math.round((cop / tasa) * 100) / 100);
+  const valorUSD = Math.max(1, Math.round(C.subtotal(lineas) / tasa));
+  const clave = `dhl1:${dest.pais}:${normal(dest.region)}:${normal(dest.ciudad)}:${dest.postal}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${Math.ceil(valorUSD / 50)}`;
+  let fallo = "";
+  const mejor = await enCache(clave, 3600, async () => {
+    const items = lineas.map((l) => {
+      const d = C.describirLinea(l), cop = C.precioLinea(l, lineas).total;
+      return {
+        description: corto(`${d.nombre} ${d.detalle}`, 90), hsCode: partida(l.producto), quantity: l.cantidad,
+        price: Math.max(0.01, Math.round((cop / tasa / l.cantidad) * 100) / 100), currency: "USD", countryOfManufacture: "CO",
+      };
+    });
+    const cuerpo = {
+      origin: ORIGEN,
+      destination: {
+        name: dest.nombre || "Cliente", phone: dest.celular || "00000000", street: dest.direccion || dest.ciudad, number: "", district: "",
+        city: dest.ciudad, state: dest.region, country: dest.pais, postalCode: dest.postal,
+      },
+      packages: [{
+        type: "box", content: "Accesorios plasticos para aves", amount: 1, name: "Caja", declaredValue: valorUSD,
+        lengthUnit: "CM", weightUnit: "KG", weight: kg, dimensions: { length: caja.largo, width: caja.ancho, height: caja.alto }, items,
+      }],
+      shipment: { type: 1, carrier: cfg.transportadora || "dhl" },
+      customsSettings: { dutiesPaymentEntity: cfg.impuestos || "recipient", exportReason: "sale" },
+      settings: { currency: "USD" },
+    };
+    const r = await fetchT("https://api.envia.com/ship/rate/", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` }, body: JSON.stringify(cuerpo),
+    }, 15000);
+    const d = await r.json().catch(() => null);
+    const tarifas = d && Array.isArray(d.data) ? d.data.filter((t) => Number(t.totalPrice) > 0) : [];
+    if (!r.ok || !tarifas.length) {
+      fallo = corto((d && (d.error && (d.error.message || d.error.description) || d.message)) || `Envia ${r.status}`, 160);
+      console.log("DHL sin tarifa", dest.pais, r.status, JSON.stringify(d).slice(0, 400));
+      return null;
+    }
+    // Precio en dólares (si Envia responde en pesos, se convierte con la tasa del día)
+    const enUSD = (t) => (String(t.currency || "USD").toUpperCase() === "COP" ? usdDe(Number(t.totalPrice)) : Number(t.totalPrice));
+    const t = tarifas.reduce((a, b) => (enUSD(b) < enUSD(a) ? b : a));
+    return { usd: enUSD(t), moneda: t.currency || "USD", servicio: t.serviceDescription || t.service || "DHL Express", dias: t.deliveryEstimate || "", carrier: t.carrier, service: t.service };
+  });
+  if (!mejor) return { ok: false, error: "No pudimos cotizar DHL a tu ciudad. Revisa ciudad y código postal, o escríbenos por WhatsApp.", detalle: fallo };
+  const paso = cfg.redondearA || 1;
+  const usd = Math.ceil((mejor.usd + (cfg.recargoUSD || 0)) / paso) * paso;
+  return { ok: true, usd, servicio: mejor.servicio, dias: mejor.dias, pesoKg: kg, carrier: mejor.carrier, service: mejor.service };
+}
+const corto = (t, n) => String(t || "").replace(/[\u0000-\u001f]/g, " ").slice(0, n);
+
+// Opciones de envío para otro país: envío propio (si aplica) y DHL
+async function opcionesInternacionales(lineas, dest, env) {
+  const opciones = [];
+  if (C.tieneTarifaInternacional(dest.pais)) {
+    opciones.push({ id: "propio", nombre: "Envío propio puerta a puerta", usd: C.envioInternacionalUSD(lineas), dias: "" });
+  }
+  const dhl = await fleteDHL(lineas, dest, env).catch((e) => ({ ok: false, error: "No pudimos cotizar DHL.", detalle: e && e.message }));
+  if (dhl.ok) opciones.push({ id: "dhl", nombre: "DHL Express", usd: dhl.usd, dias: dhl.dias, servicio: dhl.servicio, carrier: dhl.carrier, service: dhl.service, pesoKg: dhl.pesoKg });
+  return { opciones, dhl };
+}
+
+async function cotizarInternacional(lineas, cuerpo, env) {
+  const dest = destinoInternacional({ ...(cuerpo.destino || {}), pais: cuerpo.pais });
+  if (!/^[A-Z]{2}$/.test(dest.pais) || dest.pais === "CO") return error("Elige tu país.");
+  if ((Tienda.NEGOCIO.paisesSinEnvio || {})[dest.pais]) return json({ ok: false, error: "No enviamos a ese país por restricciones de importación." });
+  if (!dest.ciudad) return json({ ok: false, error: "Elige tu ciudad para calcular el envío." });
+  const { opciones, dhl } = await opcionesInternacionales(lineas, dest, env);
+  if (!opciones.length) return json({ ok: false, error: dhl.error || "Te cotizamos el envío por WhatsApp.", detalle: dhl.detalle || "" });
+  return json({
+    ok: true, internacional: true, pesoKg: Math.round(C.pesoGramos(lineas) / 10) / 100,
+    opciones: opciones.map(({ carrier, service, ...o }) => o), impuestos: (Tienda.ENVIO_INTERNACIONAL_USD.dhl || {}).impuestos || "recipient",
+  });
+}
+
 async function cotizar(cuerpo, env) {
   const lineas = lineasLimpias(cuerpo.pedido);
   if (!lineas) return error("El pedido no es válido. Recarga la página e intenta de nuevo.");
+  if (cuerpo.pais && cuerpo.pais !== "CO") return cotizarInternacional(lineas, cuerpo, env);
   const contraentrega = cuerpo.pago === "contraentrega";
   const r = await fleteColombia({ lineas, departamento: texto(cuerpo.departamento, 80), ciudad: texto(cuerpo.ciudad, 80), contraentrega }, env);
   if (!r.ok) return json(r, 200);
@@ -496,7 +591,6 @@ async function crearPedidoPaypal(cuerpo, url, env, request) {
   };
   if (!/^[A-Z]{2}$/.test(cliente.pais) || cliente.pais === "CO") return error("Elige tu país.");
   if ((Tienda.NEGOCIO.paisesSinEnvio || {})[cliente.pais]) return error("No enviamos a ese país por restricciones de importación.");
-  if (!C.tieneTarifaInternacional(cliente.pais)) return error("Para tu país cotizamos el envío por WhatsApp.");
   if (!cliente.nombre || !cliente.documento || cliente.celular.length < 8 || !cliente.departamento || !cliente.ciudad || !cliente.direccion) {
     return error("Faltan datos de envío. Revisa nombre, documento, celular, región, ciudad y dirección.");
   }
@@ -510,8 +604,17 @@ async function crearPedidoPaypal(cuerpo, url, env, request) {
     const d = C.describirLinea(l), cop = C.precioLinea(l, lineas).total;
     return { nombre: `${d.nombre} (${d.detalle})`, centavos: Math.round((cop / tasa) * (1 + recargo / 100) * 100), cop };
   });
-  const envioUSD = C.envioInternacionalUSD(lineas);
+  // Envío: el que eligió el cliente (envío propio en PA/CR o DHL). El precio se recalcula aquí, no se confía en la página.
+  cliente.postal = destinoInternacional(c).postal;
+  const { opciones, dhl } = await opcionesInternacionales(lineas, destinoInternacional({ ...c, ...cliente, region: cliente.departamento }), env);
+  const envio = opciones.find((o) => o.id === cuerpo.envio) || (cuerpo.envio ? null : opciones[0]);
+  if (!envio) return error(cuerpo.envio === "dhl" ? (dhl.error || "No pudimos cotizar DHL. Escríbenos por WhatsApp.") : "Para tu país cotizamos el envío por WhatsApp.");
+  if (Number.isFinite(Number(cuerpo.envioUSD)) && Number(cuerpo.envioUSD) > 0 && Math.abs(Number(cuerpo.envioUSD) - envio.usd) >= 1) {
+    return json({ ok: false, cambio: true, error: `El envío cambió a USD ${envio.usd}. Revisa el total y confirma de nuevo.`, opciones: opciones.map(({ carrier, service, ...o }) => o) }, 409);
+  }
+  const envioUSD = envio.usd;
   const pesoKg = Math.round(C.pesoGramos(lineas) / 10) / 100;
+  const detalleEnvio = envio.id === "dhl" ? `DHL Express a ${nombrePais(cliente.pais)}${envio.dias ? ` (${envio.dias})` : ""}` : `Envío propio puerta a puerta a ${nombrePais(cliente.pais)}`;
   const id = idPedido();
   const orden = await crearOrden(env, { id, lineas: items, envioCentavos: Math.round(envioUSD * 100), cliente: { ...cliente, region: cliente.departamento }, origen: url.origin })
     .catch((e) => { console.error("PayPal", e && e.message); return null; });
@@ -524,8 +627,8 @@ async function crearPedidoPaypal(cuerpo, url, env, request) {
       id, fecha: ahora, canal: "web", etapa: "por_pagar", tipo: "paypal", metodo: "paypal", moneda: "USD",
       total, valorPedido: Math.round(subtotal + envioUSD * tasa), subtotal, tasa, recargoPorcentaje: recargo,
       lineas, productos: items.map((x) => `${x.nombre} = ${pesos(x.cop)} (${dolares(x.centavos / 100)})`), regalo: regalo ? `${regalo.pares} pares de patapioja sintética` : "",
-      envio: { valor: envioUSD, moneda: "USD", detalle: `Internacional puerta a puerta a ${nombrePais(cliente.pais)}`, pesoKg },
-      cliente: { ...cliente, destino: `${cliente.direccion}, ${cliente.ciudad}, ${cliente.departamento} (${nombrePais(cliente.pais)})` },
+      envio: { valor: envioUSD, moneda: "USD", detalle: detalleEnvio, pesoKg, tipo: envio.id, ...(envio.id === "dhl" ? { carrier: envio.carrier, service: envio.service } : {}) },
+      cliente: { ...cliente, destino: `${cliente.direccion}, ${cliente.ciudad}, ${cliente.departamento}${cliente.postal ? ` ${cliente.postal}` : ""} (${nombrePais(cliente.pais)})` },
       paypalOrden: orden.orden, pagos: [], historial: [{ fecha: ahora, texto: `Pedido creado en la página; enviado a PayPal (orden ${orden.orden})` }],
     }).catch((e) => console.error("KV pedido PayPal", e && e.message));
   }
@@ -563,7 +666,9 @@ async function registrarPagoPaypal(env, r) {
     r.pagador && r.pagador.correo ? `✉️ PayPal: ${esc(r.pagador.correo)}` : null,
     `Orden PayPal ${esc(r.orden)}${r.captura ? ` · cobro ${esc(r.captura)}` : ""}`,
     "",
-    estado === "approved" ? "👉 Siguiente paso: despacha por envío internacional y envíale la guía al cliente por WhatsApp." : null,
+    estado === "approved" ? (p && p.envio && p.envio.tipo === "dhl"
+      ? "👉 Siguiente paso: genera la guía de DHL en Envia (internacional, con factura comercial), despacha y envíale la guía al cliente por WhatsApp."
+      : "👉 Siguiente paso: despacha por envío propio y envíale la guía al cliente por WhatsApp.") : null,
   ].filter((x) => x !== null).join("\n");
   if (await telegram(env, mensaje)) await marcarAvisado(env, clave);
   return estado;

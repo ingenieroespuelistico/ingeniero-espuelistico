@@ -218,8 +218,8 @@ ${imagenes[0] ? `<meta property="og:image" content="${imagenes[0]}">` : ""}
 <meta property="og:locale" content="es_CO">
 <link rel="icon" href="/icono.svg" type="image/svg+xml">
 ${FUENTE}
-<link rel="stylesheet" href="/css/estilos.css?v=13">
-<link rel="stylesheet" href="/css/secciones.css?v=13">
+<link rel="stylesheet" href="/css/estilos.css?v=15">
+<link rel="stylesheet" href="/css/secciones.css?v=15">
 ${ld(datosProducto)}
 ${ld(migas)}
 </head>
@@ -250,7 +250,7 @@ ${CABECERA}
   <section class="pp-seccion"><h2>Otros productos</h2><ul class="pp-relacionados">${enlacesProductos(p.id)}</ul></section>
 </main>
 ${pie()}
-<script src="/js/medicion.js?v=13" defer></script>
+<script src="/js/medicion.js?v=15" defer></script>
 </body>
 </html>
 `;
@@ -294,8 +294,8 @@ for (const g of PAGINAS_SEO) {
 <meta property="og:locale" content="es_CO">
 <link rel="icon" href="/icono.svg" type="image/svg+xml">
 ${FUENTE}
-<link rel="stylesheet" href="/css/estilos.css?v=13">
-<link rel="stylesheet" href="/css/secciones.css?v=13">
+<link rel="stylesheet" href="/css/estilos.css?v=15">
+<link rel="stylesheet" href="/css/secciones.css?v=15">
 ${datos.map(ld).join("\n")}
 </head>
 <body class="pagina-producto pagina-guia">
@@ -310,7 +310,7 @@ ${cuerpo}
   <section class="pp-seccion"><h2>Productos</h2><ul class="pp-relacionados">${enlacesProductos()}</ul></section>
 </main>
 ${pie()}
-<script src="/js/medicion.js?v=13" defer></script>
+<script src="/js/medicion.js?v=15" defer></script>
 </body>
 </html>
 `;

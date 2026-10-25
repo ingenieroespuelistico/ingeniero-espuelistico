@@ -369,10 +369,14 @@
     if (pais === "Colombia") return { texto: "Enviamos con Interrapidísimo. El valor se calcula según tu municipio y el peso del paquete; con contraentrega incluye el costo del recaudo." };
     const regla = ENVIOS_INTERNACIONALES[pais];
     const kg = pesoGramos() / 1000;
-    if (regla && regla.tipo === "formula") {
-      const usd = ENVIO_INTERNACIONAL_USD.base + ENVIO_INTERNACIONAL_USD.porMedioKiloExtra * Math.ceil(Math.max(0, kg - 1) / 0.5);
-      return { texto: `Envío puerta a puerta a ${pais}: aprox. USD ${usd} (peso estimado ${kg.toFixed(2)} kg).`, usd };
+    const elegido = envioElegido();
+    if (elegido) return { texto: `Envío a ${pais}: ${elegido.nombre}, USD ${elegido.usd}${elegido.dias ? ` (${elegido.dias})` : ""}. Peso estimado ${kg.toFixed(2)} kg.`, usd: elegido.usd };
+    const dhl = ENVIO_INTERNACIONAL_USD.dhl && ENVIO_INTERNACIONAL_USD.dhl.activo;
+    if (C.tieneTarifaInternacional(isoPedido())) {
+      const usd = C.envioInternacionalUSD(pedido);
+      return { texto: `Envío a ${pais}: envío propio puerta a puerta por USD ${usd}${dhl ? " o DHL Express. Elige tu ciudad para ver el valor de DHL y escoge el que prefieras" : ""} (peso estimado ${kg.toFixed(2)} kg).`, usd };
     }
+    if (dhl) return { texto: `Envío a ${pais} con DHL Express: elige tu ciudad y calculamos el valor exacto (peso estimado ${kg.toFixed(2)} kg).` };
     if (regla) return { texto: `Envío a ${pais}: ${regla.texto}. Te confirmamos el valor exacto por WhatsApp.` };
     return { texto: `Envío a ${pais}: te cotizamos por WhatsApp según el peso (aprox. ${kg.toFixed(2)} kg).` };
   }
@@ -381,7 +385,8 @@
   const paisSinEnvio = () => { const iso = ubicacionPedido ? ubicacionPedido.iso() : "CO"; return (NEGOCIO.paisesSinEnvio || {})[iso] || ""; };
   const AVISO_SIN_ENVIO = (n) => `No enviamos a ${n}. Las leyes de Estados Unidos (incluidos Puerto Rico y sus demás territorios) y de Canadá restringen la importación de espuelas y accesorios para gallos, así que no podemos despachar pedidos a esos destinos.`;
   const isoPedido = () => (ubicacionPedido ? ubicacionPedido.iso() : "CO");
-  const paypalDirecto = () => typeof PAYPAL !== "undefined" && PAYPAL.activo && C.tieneTarifaInternacional(isoPedido());
+  const paypalDirecto = () => typeof PAYPAL !== "undefined" && PAYPAL.activo && isoPedido() !== "CO" && !paisSinEnvio()
+    && (C.tieneTarifaInternacional(isoPedido()) || Boolean(envioElegido()));
   function pintarPagos() {
     const pais = ubicacionPedido ? ubicacionPedido.paisNombre() : "Colombia";
     const caja = $("#opciones-pago");
@@ -389,6 +394,8 @@
     const previo = (caja.querySelector("input[name=pago]:checked") || {}).value;
     const sinEnvio = paisSinEnvio();
     $("#boton-confirmar").disabled = Boolean(sinEnvio);
+    $("#fila-postal").hidden = pais === "Colombia" || Boolean(sinEnvio);
+    if (pais === "Colombia" || sinEnvio) $("#opciones-envio").hidden = true;
     if (sinEnvio) {
       caja.innerHTML = `<legend>Envío no disponible</legend><p class="aviso-sin-envio" role="alert">${AVISO_SIN_ENVIO(sinEnvio)}</p>`;
       $("#nota-envio").textContent = "";
@@ -438,7 +445,7 @@
   marcarPaisesSinEnvio();
   document.addEventListener("ie:panel-abierto", marcarPaisesSinEnvio);
   // Al elegir departamento o municipio, se recalcula el envío
-  ["#campo-region", "#campo-ciudad", "#campo-ciudad-otra", "#campo-region-libre"].forEach((sel) => {
+  ["#campo-region", "#campo-ciudad", "#campo-ciudad-otra", "#campo-region-libre", "#campo-postal"].forEach((sel) => {
     const el = $(sel);
     if (el) el.addEventListener("change", () => { if (!panel.hidden) setTimeout(actualizarEnvio, 0); });
   });
@@ -504,22 +511,56 @@
   const esColombia = () => !ubicacionPedido || ubicacionPedido.iso() === "CO";
   const pagoElegido = () => (($("#opciones-pago input[name=pago]:checked") || {}).value || "");
   const escapar = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const postalPedido = () => (($("#campo-postal") || {}).value || "").trim();
+  const lineasClave = () => pedido.map((l) => [l.producto, l.cantidad, l.medida, l.presentacion, l.variante, l.color]);
   function claveEnvio() {
     const u = ubicacionPedido;
-    if (!pedido.length || !esColombia() || !u || !u.region() || !u.ciudad()) return "";
-    return JSON.stringify([pedido.map((l) => [l.producto, l.cantidad, l.medida, l.presentacion, l.variante, l.color]), u.region(), u.ciudad(), pagoElegido() === "Contraentrega"]);
+    if (!pedido.length || !u || !u.ciudad()) return "";
+    if (esColombia()) return u.region() ? JSON.stringify(["CO", lineasClave(), u.region(), u.ciudad(), pagoElegido() === "Contraentrega"]) : "";
+    if (!u.iso() || paisSinEnvio()) return "";
+    return JSON.stringify([u.iso(), lineasClave(), u.region(), u.ciudad(), postalPedido()]);
+  }
+  // Envío internacional elegido por el cliente (de la última cotización): { id, nombre, usd, dias }
+  let envioElegidoId = "";
+  function envioElegido() {
+    if (esColombia() || cotizacion.estado !== "listo" || cotizacion.clave !== claveEnvio()) return null;
+    const ops = (cotizacion.datos && cotizacion.datos.opciones) || [];
+    return ops.find((o) => o.id === envioElegidoId) || null;
+  }
+  function pintarOpcionesEnvio() {
+    const caja = $("#opciones-envio");
+    const ops = (cotizacion.datos && cotizacion.datos.opciones) || [];
+    if (!ops.length) { caja.hidden = true; return; }
+    if (!ops.some((o) => o.id === envioElegidoId)) envioElegidoId = ops.reduce((a, b) => (b.usd < a.usd ? b : a)).id;
+    $("#lista-envios").innerHTML = ops.map((o) => `
+      <label class="opcion opcion-envio"><input type="radio" name="envio" value="${escapar(o.id)}" ${o.id === envioElegidoId ? "checked" : ""}>
+        <span class="opcion-envio__texto"><span>${escapar(o.nombre)}</span><small>${o.id === "dhl" ? `Con número de guía para rastrear${o.dias ? " · " + escapar(o.dias) : ""}` : "Lo coordinamos contigo por WhatsApp"}</small></span>
+        <span class="opcion-envio__precio">USD ${escapar(o.usd)}</span></label>`).join("");
+    const nota = $("#nota-impuestos");
+    nota.hidden = !ops.some((o) => o.id === "dhl");
+    nota.textContent = "Con DHL, los impuestos o trámites de aduana de tu país, si aplican, los paga quien recibe.";
+    caja.hidden = false;
+    $$("input[name=envio]", caja).forEach((r) => r.addEventListener("change", () => { envioElegidoId = r.value; pintarEnvio(); pintarPagos(); }));
   }
   function pintarEnvio() {
     const celda = $("[data-envio]"), filaTotal = $("[data-fila-total]");
     if (!celda) return;
     const contra = pagoElegido() === "Contraentrega";
     if (!esColombia()) {
-      if (C.tieneTarifaInternacional(isoPedido()) && pedido.length) {
-        const envioUSD = C.envioInternacionalUSD(pedido);
-        celda.innerHTML = `USD ${envioUSD} <small>puerta a puerta</small>`;
+      const caja = $("#opciones-envio");
+      if (paisSinEnvio() || !pedido.length) { caja.hidden = true; celda.textContent = "—"; filaTotal.hidden = true; return; }
+      if (cotizacion.estado === "cargando") { celda.textContent = "Calculando…"; filaTotal.hidden = true; return; }
+      const o = envioElegido();
+      if (o) {
+        celda.innerHTML = `USD ${escapar(o.usd)} <small>${escapar(o.nombre)}${o.dias ? " · " + escapar(o.dias) : ""}</small>`;
         filaTotal.hidden = false;
-        $("[data-total]").textContent = `${pesosCOP(subtotal())} COP + USD ${envioUSD} de envío${paypalDirecto() ? " · PayPal te muestra el total exacto en dólares" : ""}`;
-      } else { celda.textContent = "Te lo cotizamos por WhatsApp"; filaTotal.hidden = true; }
+        $("[data-total]").textContent = `${pesosCOP(subtotal())} COP + USD ${o.usd} de envío${paypalDirecto() ? " · PayPal te muestra el total exacto en dólares" : ""}`;
+        return;
+      }
+      caja.hidden = true;
+      filaTotal.hidden = true;
+      if (cotizacion.estado === "error") { celda.textContent = cotizacion.datos; return; }
+      celda.textContent = ENVIO_INTERNACIONAL_USD.dhl && ENVIO_INTERNACIONAL_USD.dhl.activo ? "Elige tu ciudad para calcularlo" : "Te lo cotizamos por WhatsApp";
       return;
     }
     if (cotizacion.estado === "cargando") { celda.textContent = "Calculando…"; filaTotal.hidden = true; return; }
@@ -545,7 +586,9 @@
       try {
         const r = await fetch("/api/cotizar", {
           method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
-          body: JSON.stringify({ pedido, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), pago: pagoElegido() === "Contraentrega" ? "contraentrega" : "en_linea" }),
+          body: JSON.stringify(esColombia()
+            ? { pedido, departamento: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), pago: pagoElegido() === "Contraentrega" ? "contraentrega" : "en_linea" }
+            : { pedido, pais: isoPedido(), destino: { region: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), postal: postalPedido() } }),
         });
         const d = await r.json().catch(() => ({ ok: false, error: r.status === 429 ? "Muchas consultas seguidas. Espera un minuto." : "No pudimos calcular el envío." }));
         if (cotizacion.clave !== clave) return;
@@ -554,6 +597,7 @@
         if (cotizacion.clave !== clave) return;
         cotizacion = { clave, estado: "error", datos: "No pudimos calcular el envío. Revisa tu conexión." };
       }
+      if (!esColombia()) { pintarOpcionesEnvio(); pintarPagos(); }
       pintarEnvio();
     }, 400);
   }
@@ -596,8 +640,9 @@
       irAPagar(d, cel.numeroE164, texto);
       return;
     }
-    // Panamá y Costa Rica (países con tarifa fija): PayPal directo, en dólares
+    // Otros países: PayPal directo, en dólares, con el envío elegido (propio en Panamá y Costa Rica, o DHL)
     if (!esColombia() && d.pago === "PayPal" && paypalDirecto()) {
+      if (!envioElegido()) return fallar(cotizacion.estado === "cargando" ? "Estamos calculando el envío, espera un momento." : "Elige tu ciudad para calcular el envío.", $("#campo-ciudad"));
       irAPaypal(d, cel.numeroE164, texto);
       return;
     }
@@ -699,11 +744,14 @@
           method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout ? AbortSignal.timeout(25000) : undefined,
           body: JSON.stringify({
             verificacion, pedido, acepto: $("#pedido-acepto").checked,
-            cliente: { nombre: d.nombre, documento: d.documento, celular, correo: (d.correo || "").trim(), pais: isoPedido(), region: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), direccion: d.direccion },
+            envio: (envioElegido() || {}).id, envioUSD: (envioElegido() || {}).usd,
+            cliente: { nombre: d.nombre, documento: d.documento, celular, correo: (d.correo || "").trim(), pais: isoPedido(), region: ubicacionPedido.region(), ciudad: ubicacionPedido.ciudad(), postal: postalPedido(), direccion: d.direccion },
           }),
         });
       } catch (e) { throw new Error("La conexión tardó demasiado."); }
       const res = await r.json().catch(() => ({ ok: false, error: r.status === 429 ? "Muchos intentos seguidos. Espera un minuto." : "No pudimos abrir PayPal en este momento." }));
+      // El valor del envío cambió desde que se mostró: se actualiza y el cliente confirma de nuevo
+      if (res.cambio && Array.isArray(res.opciones) && cotizacion.datos) { cotizacion.datos.opciones = res.opciones; pintarOpcionesEnvio(); pintarEnvio(); }
       if (!res.ok || !res.url || !/^https:\/\/(www\.)?(sandbox\.)?paypal\.com\//.test(res.url)) throw new Error(res.error || "No pudimos abrir PayPal.");
       try { sessionStorage.setItem("ie-ultimo-pedido", JSON.stringify({ pedido: res.pedido, total: res.total, moneda: "USD" })); } catch (e) {}
       window.Medicion && Medicion.evento("InitiateCheckout", { value: res.total, currency: "USD", num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
@@ -715,7 +763,7 @@
     }
   }
   if (typeof PAYPAL !== "undefined" && PAYPAL.activo && $("#aviso-pago")) {
-    $("#aviso-pago").textContent = "En Colombia pagas aquí mismo con Mercado Pago. Desde Panamá y Costa Rica pagas aquí mismo con PayPal, en dólares. Desde otros países te cotizamos el envío por WhatsApp y pagas con PayPal o Western Union.";
+    $("#aviso-pago").textContent = "En Colombia pagas aquí mismo con Mercado Pago. Desde otros países pagas aquí mismo con PayPal, en dólares, con envío por DHL Express (en Panamá y Costa Rica también puedes elegir nuestro envío propio). Si prefieres Western Union, te enviamos los datos por WhatsApp.";
   }
   // Si el cliente vuelve con "Atrás" desde Mercado Pago, el botón no queda bloqueado
   addEventListener("pageshow", (e) => { if (e.persisted) { $("#boton-confirmar").disabled = Boolean(paisSinEnvio()); textoConfirmar(); } });

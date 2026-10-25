@@ -60,7 +60,7 @@ export async function crearOrden(env, { id, lineas, envioCentavos, cliente, orig
     ...unidad,
     shipping: {
       type: "SHIPPING", name: { full_name: corto(cliente.nombre, 300) },
-      address: { address_line_1: corto(cliente.direccion, 300), admin_area_2: corto(cliente.ciudad, 120), admin_area_1: corto(cliente.region, 300), country_code: cliente.pais },
+      address: { address_line_1: corto(cliente.direccion, 300), admin_area_2: corto(cliente.ciudad, 120), admin_area_1: corto(cliente.region, 300), ...(cliente.postal ? { postal_code: corto(cliente.postal, 60) } : {}), country_code: cliente.pais },
     },
   };
   let r = await llamar(env, "POST", "/v2/checkout/orders", { intent: "CAPTURE", purchase_units: [conEnvio], payment_source: { paypal: { experience_context: contexto(true) } } }, { "PayPal-Request-Id": `crear-${id}` });
