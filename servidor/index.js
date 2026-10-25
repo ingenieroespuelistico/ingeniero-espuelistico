@@ -23,7 +23,7 @@ import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-25.1";
+const VERSION = "2026-10-25.2";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -258,6 +258,32 @@ function destinoInternacional(c) {
   };
 }
 
+// Código de la región (provincia, departamento...) como lo pide Envia: se consulta su lista de estados del país
+// y se busca por nombre. Se guarda 30 días.
+async function estadosEnvia(pais, env) {
+  return enCache(`estados1:${pais}`, 30 * 86400, async () => {
+    const r = await fetchT(`https://queries.envia.com/state?country_code=${pais}`, { headers: { Authorization: `Bearer ${env.ENVIA_TOKEN}` } }).catch(() => null);
+    if (!r || !r.ok) return null;
+    const d = await r.json().catch(() => null);
+    const lista = Array.isArray(d) ? d : (d && (d.data || d.states || d.results)) || [];
+    const out = lista.map((x) => ({
+      nombre: x.name || x.nombre || x.state_name || x.description || "",
+      codigo: x.code_2_digits || x.code || x.abbreviation || x.code_3_digits || x.state_code || x.iso || "",
+      codigo3: x.code_3_digits || "",
+    })).filter((x) => x.nombre && x.codigo);
+    return out.length ? out : null;
+  });
+}
+const sinPrefijo = (t) => normal(t).replace(/^(provincia|departamento|estado|region|distrito|comarca)( de)? /, "");
+async function codigoEstado(pais, region, env) {
+  if (!region) return [];
+  const lista = await estadosEnvia(pais, env).catch(() => null);
+  if (!lista) return [];
+  const n = sinPrefijo(region);
+  const e = lista.find((x) => sinPrefijo(x.nombre) === n) || lista.find((x) => sinPrefijo(x.nombre).includes(n) || n.includes(sinPrefijo(x.nombre)));
+  return e ? [e.codigo, e.codigo3].filter(Boolean) : [];
+}
+
 // Tarifa de DHL (la más barata de sus servicios) en dólares. Devuelve { ok, usd, servicio, dias, ... } o { ok:false, error }
 async function fleteDHL(lineas, dest, env) {
   const cfg = Tienda.ENVIO_INTERNACIONAL_USD.dhl || {};
@@ -268,7 +294,7 @@ async function fleteDHL(lineas, dest, env) {
   const tasa = await tasaDolar(env);
   const usdDe = (cop) => Math.max(0.5, Math.round((cop / tasa) * 100) / 100);
   const valorUSD = Math.max(1, Math.round(C.subtotal(lineas) / tasa));
-  const clave = `dhl1:${dest.pais}:${normal(dest.region)}:${normal(dest.ciudad)}:${dest.postal}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${Math.ceil(valorUSD / 50)}`;
+  const clave = `dhl2:${dest.pais}:${normal(dest.region)}:${normal(dest.ciudad)}:${dest.postal}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${Math.ceil(valorUSD / 50)}`;
   let fallo = "";
   const mejor = await enCache(clave, 3600, async () => {
     const items = lineas.map((l) => {
@@ -282,7 +308,7 @@ async function fleteDHL(lineas, dest, env) {
       origin: ORIGEN,
       destination: {
         name: dest.nombre || "Cliente", phone: dest.celular || "00000000", street: dest.direccion || dest.ciudad, number: "", district: "",
-        city: dest.ciudad, state: dest.region, country: dest.pais, postalCode: dest.postal,
+        city: dest.ciudad, state: "", country: dest.pais, postalCode: dest.postal,
       },
       packages: [{
         type: "box", content: "Accesorios plasticos para aves", amount: 1, name: "Caja", declaredValue: valorUSD,
@@ -292,16 +318,21 @@ async function fleteDHL(lineas, dest, env) {
       customsSettings: { dutiesPaymentEntity: cfg.impuestos || "recipient", exportReason: "sale" },
       settings: { currency: "USD" },
     };
-    const r = await fetchT("https://api.envia.com/ship/rate/", {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` }, body: JSON.stringify(cuerpo),
-    }, 15000);
-    const d = await r.json().catch(() => null);
-    const tarifas = d && Array.isArray(d.data) ? d.data.filter((t) => Number(t.totalPrice) > 0) : [];
-    if (!r.ok || !tarifas.length) {
-      fallo = corto((d && (d.error && (d.error.message || d.error.description) || d.message)) || `Envia ${r.status}`, 160);
-      console.log("DHL sin tarifa", dest.pais, r.status, JSON.stringify(d).slice(0, 400));
-      return null;
+    // Se prueba con el código de la región de Envia y, si no sirve, sin región (DHL cotiza con país, ciudad y código postal)
+    const estados = [...new Set([...(await codigoEstado(dest.pais, dest.region, env)), ""])];
+    let tarifas = [];
+    for (const estado of estados) {
+      cuerpo.destination.state = estado;
+      const r = await fetchT("https://api.envia.com/ship/rate/", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` }, body: JSON.stringify(cuerpo),
+      }, 15000);
+      const d = await r.json().catch(() => null);
+      tarifas = d && Array.isArray(d.data) ? d.data.filter((t) => Number(t.totalPrice) > 0) : [];
+      if (r.ok && tarifas.length) break;
+      fallo = corto(`[estado "${estado}"] ` + ((d && (d.error && (d.error.message || d.error.description) || d.message)) || `Envia ${r.status}`), 200);
+      console.log("DHL sin tarifa", dest.pais, estado, r.status, JSON.stringify(d).slice(0, 400));
     }
+    if (!tarifas.length) return null;
     // Precio en dólares (si Envia responde en pesos, se convierte con la tasa del día)
     const enUSD = (t) => (String(t.currency || "USD").toUpperCase() === "COP" ? usdDe(Number(t.totalPrice)) : Number(t.totalPrice));
     const t = tarifas.reduce((a, b) => (enUSD(b) < enUSD(a) ? b : a));
