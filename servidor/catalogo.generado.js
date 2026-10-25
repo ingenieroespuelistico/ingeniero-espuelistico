@@ -315,8 +315,8 @@ const NEGOCIO = {
   correo: "ingenieroespuelistico@gmail.com",
   titular: "Brayner Alexander Jiménez Muñoz",   // persona natural responsable de la tienda (sale en los correos y páginas legales)
   documentoTitular: "C.C. 1.104.938.233",
-  // Dirección pública de la página. Cuando compres el dominio, cámbiala aquí (por ejemplo "https://ingenieroespuelistico.com")
-  sitio: "https://ingeniero-espuelistico.ingenieroespuelistico.workers.dev",
+  // Dirección pública de la página (dominio propio). Se usa en Google, el mapa del sitio y los enlaces para compartir.
+  sitio: "https://ingenieroespuelistico.com",
   direccion: { calle: "Transversal 11 Sur # 13-65, casa 28", ciudad: "Ibagué", departamento: "Tolima", pais: "CO" },
   // Clave pública de Cloudflare Turnstile (protección contra robots). Vacío = desactivado.
   turnstile: "0x4AAAAAAFjO18VrFJBssEiL",

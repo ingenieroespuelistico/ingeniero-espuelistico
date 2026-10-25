@@ -3,6 +3,13 @@
   "name": "ingeniero-espuelistico",
   "main": "servidor/index.js",
   "compatibility_date": "2026-10-01",
+  // Dominio propio (comprado en Cloudflare). Cloudflare crea solo los registros DNS y el certificado.
+  // La dirección antigua ...workers.dev sigue funcionando (pedidos y avisos viejos no se pierden).
+  "routes": [
+    { "pattern": "ingenieroespuelistico.com", "custom_domain": true },
+    { "pattern": "www.ingenieroespuelistico.com", "custom_domain": true }
+  ],
+  "workers_dev": true,
   // Antes de publicar, arma el catálogo del servidor con los mismos precios de la página (sitio/js/precios.js)
   "build": { "command": "node servidor/generar-catalogo.mjs && node servidor/generar-paginas.mjs" },
   // Límite de solicitudes por visitante para cotizar y pagar (evita abusos)
