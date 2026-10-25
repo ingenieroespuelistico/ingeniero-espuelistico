@@ -23,7 +23,7 @@ import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-25.4";
+const VERSION = "2026-10-25.5";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -544,6 +544,7 @@ async function webhookMercadoPago(request, url, env, ctx) {
 
 async function consultarPago(id, env) {
   const r = await fetchT(`https://api.mercadopago.com/v1/payments/${id}`, { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
+  if (r.status === 404) return { noExiste: true }; // por ejemplo, la notificación de prueba del panel de Mercado Pago
   return r.ok ? r.json() : null;
 }
 
@@ -561,6 +562,7 @@ async function marcarAvisado(env, clave) {
 async function procesarPago(id, env) {
   const p = await consultarPago(id, env);
   if (!p) return false; // Mercado Pago no respondió: que reintente
+  if (p.noExiste) return true; // pago inexistente (prueba del panel): no hay nada que hacer ni que reintentar
   if (!/^IE-\d{8}-[0-9A-F]{6}$/.test(p.external_reference || "")) return true; // no es un pago de la tienda
   // Base de pedidos: guarda el pago en el pedido y en la ficha del cliente (si falla, Mercado Pago reintenta)
   const pedido = env.PEDIDOS ? await registrarPago(env, p) : null;
