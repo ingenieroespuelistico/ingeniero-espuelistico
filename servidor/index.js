@@ -23,7 +23,7 @@ import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-25.3";
+const VERSION = "2026-10-25.4";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -294,7 +294,7 @@ async function fleteDHL(lineas, dest, env) {
   const tasa = await tasaDolar(env);
   const usdDe = (cop) => Math.max(0.5, Math.round((cop / tasa) * 100) / 100);
   const valorUSD = Math.max(1, Math.round(C.subtotal(lineas) / tasa));
-  const clave = `dhl2:${dest.pais}:${normal(dest.region)}:${normal(dest.ciudad)}:${dest.postal}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${Math.ceil(valorUSD / 50)}`;
+  const clave = `dhl3:${dest.pais}:${normal(dest.region)}:${normal(dest.ciudad)}:${dest.postal}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${Math.ceil(valorUSD / 50)}`;
   let fallo = "";
   const mejor = await enCache(clave, 3600, async () => {
     const items = lineas.map((l) => {
@@ -323,29 +323,49 @@ async function fleteDHL(lineas, dest, env) {
     const palabras = sinPrefijo(dest.region).toUpperCase().split(" ").filter((p) => p.length > 2);
     const iniciales = palabras.length > 1 ? palabras.map((p) => p[0]).join("").slice(0, 3) : (palabras[0] || "").slice(0, 2);
     const estados = [...new Set([...(await codigoEstado(dest.pais, dest.region, env)), "", iniciales].filter((x, i, a) => x || i === a.indexOf("")))];
-    let tarifas = [];
-    for (const estado of estados) {
-      cuerpo.destination.state = estado;
+    // Ciudad: DHL valida el nombre. Se prueba sin "Distrito de", "Cantón"... y, si no la reconoce, con la capital
+    // de la región (la tarifa de DHL es por país; puede faltar el recargo por zona remota).
+    const ciudades = [...new Set([sinPrefijoCiudad(dest.ciudad), dest.ciudad, sinPrefijoCiudad(dest.region)].filter(Boolean))];
+    let tarifas = [], estadoOk = null, intentos = 0, ciudadUsada = "";
+    const probar = async (ciudad, estado) => {
+      intentos++;
+      cuerpo.destination.city = ciudad; cuerpo.destination.state = estado;
       const r = await fetchT("https://api.envia.com/ship/rate/", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ENVIA_TOKEN}` }, body: JSON.stringify(cuerpo),
       }, 15000);
       const d = await r.json().catch(() => null);
       tarifas = d && Array.isArray(d.data) ? d.data.filter((t) => Number(t.totalPrice) > 0) : [];
-      if (r.ok && tarifas.length) break;
-      fallo = corto(`[estado "${estado}"] ` + ((d && (d.error && (d.error.message || d.error.description) || d.message)) || `Envia ${r.status}`), 200);
-      console.log("DHL sin tarifa", dest.pais, estado, r.status, JSON.stringify(d).slice(0, 400));
+      if (r.ok && tarifas.length) { ciudadUsada = ciudad; return "ok"; }
+      const msg = (d && (d.error && (d.error.message || d.error.description) || d.message)) || `Envia ${r.status}`;
+      fallo = corto(`[${ciudad} / "${estado}"] ${msg}`, 220);
+      console.log("DHL sin tarifa", dest.pais, ciudad, estado, r.status, JSON.stringify(d).slice(0, 400));
+      return /properties:state|\bstate\b/i.test(String(msg)) ? "estado" : "ciudad";
+    };
+    // 1) con la primera ciudad se busca un código de región que Envia acepte
+    for (const estado of estados) {
+      const res = await probar(ciudades[0], estado);
+      if (res === "ok") break;
+      if (res === "ciudad") { estadoOk = estado; break; }
+    }
+    // 2) si la región quedó bien pero la ciudad no, se prueban las otras ciudades
+    if (!tarifas.length && estadoOk !== null) {
+      for (const ciudad of ciudades.slice(1)) { if (intentos >= 6) break; if ((await probar(ciudad, estadoOk)) === "ok") break; }
     }
     if (!tarifas.length) return null;
     // Precio en dólares (si Envia responde en pesos, se convierte con la tasa del día)
     const enUSD = (t) => (String(t.currency || "USD").toUpperCase() === "COP" ? usdDe(Number(t.totalPrice)) : Number(t.totalPrice));
     const t = tarifas.reduce((a, b) => (enUSD(b) < enUSD(a) ? b : a));
-    return { usd: enUSD(t), moneda: t.currency || "USD", servicio: t.serviceDescription || t.service || "DHL Express", dias: t.deliveryEstimate || "", carrier: t.carrier, service: t.service };
+    return {
+      usd: enUSD(t), moneda: t.currency || "USD", servicio: t.serviceDescription || t.service || "DHL Express", dias: t.deliveryEstimate || "", carrier: t.carrier, service: t.service,
+      ciudadDHL: ciudadUsada, aprox: normal(ciudadUsada) !== normal(sinPrefijoCiudad(dest.ciudad)) && normal(ciudadUsada) !== normal(dest.ciudad),
+    };
   });
   if (!mejor) return { ok: false, error: "No pudimos cotizar DHL a tu ciudad. Revisa ciudad y código postal, o escríbenos por WhatsApp.", detalle: fallo };
   const paso = cfg.redondearA || 1;
   const usd = Math.ceil((mejor.usd + (cfg.recargoUSD || 0)) / paso) * paso;
-  return { ok: true, usd, servicio: mejor.servicio, dias: mejor.dias, pesoKg: kg, carrier: mejor.carrier, service: mejor.service };
+  return { ok: true, usd, servicio: mejor.servicio, dias: mejor.dias, pesoKg: kg, carrier: mejor.carrier, service: mejor.service, ciudadDHL: mejor.ciudadDHL, aprox: Boolean(mejor.aprox) };
 }
+const sinPrefijoCiudad = (t) => String(t || "").replace(/^\s*(distrito|provincia|cant[oó]n|municipio( aut[oó]nomo)?|corregimiento|parroquia|comuna)( de(l)?| de la)?\s+/i, "").trim();
 const corto = (t, n) => String(t || "").replace(/[\u0000-\u001f]/g, " ").slice(0, n);
 
 // Opciones de envío para otro país: envío propio (si aplica) y DHL
@@ -355,7 +375,7 @@ async function opcionesInternacionales(lineas, dest, env) {
     opciones.push({ id: "propio", nombre: "Envío propio puerta a puerta", usd: C.envioInternacionalUSD(lineas), dias: "" });
   }
   const dhl = await fleteDHL(lineas, dest, env).catch((e) => ({ ok: false, error: "No pudimos cotizar DHL.", detalle: e && e.message }));
-  if (dhl.ok) opciones.push({ id: "dhl", nombre: "DHL Express", usd: dhl.usd, dias: dhl.dias, servicio: dhl.servicio, carrier: dhl.carrier, service: dhl.service, pesoKg: dhl.pesoKg });
+  if (dhl.ok) opciones.push({ id: "dhl", nombre: "DHL Express", usd: dhl.usd, dias: dhl.dias, servicio: dhl.servicio, carrier: dhl.carrier, service: dhl.service, pesoKg: dhl.pesoKg, ciudadDHL: dhl.ciudadDHL, aprox: dhl.aprox });
   return { opciones, dhl };
 }
 
@@ -368,7 +388,8 @@ async function cotizarInternacional(lineas, cuerpo, env) {
   if (!opciones.length) return json({ ok: false, error: dhl.error || "Te cotizamos el envío por WhatsApp.", detalle: dhl.detalle || "" });
   return json({
     ok: true, internacional: true, pesoKg: Math.round(C.pesoGramos(lineas) / 10) / 100,
-    opciones: opciones.map(({ carrier, service, ...o }) => o), impuestos: (Tienda.ENVIO_INTERNACIONAL_USD.dhl || {}).impuestos || "recipient",
+    opciones: opciones.map(({ carrier, service, ciudadDHL, aprox, ...o }) => o), impuestos: (Tienda.ENVIO_INTERNACIONAL_USD.dhl || {}).impuestos || "recipient",
+    ...(dhl.ok ? {} : { detalle: dhl.detalle || "" }),
   });
 }
 
@@ -644,7 +665,7 @@ async function crearPedidoPaypal(cuerpo, url, env, request) {
   const envio = opciones.find((o) => o.id === cuerpo.envio) || (cuerpo.envio ? null : opciones[0]);
   if (!envio) return error(cuerpo.envio === "dhl" ? (dhl.error || "No pudimos cotizar DHL. Escríbenos por WhatsApp.") : "Para tu país cotizamos el envío por WhatsApp.");
   if (Number.isFinite(Number(cuerpo.envioUSD)) && Number(cuerpo.envioUSD) > 0 && Math.abs(Number(cuerpo.envioUSD) - envio.usd) >= 1) {
-    return json({ ok: false, cambio: true, error: `El envío cambió a USD ${envio.usd}. Revisa el total y confirma de nuevo.`, opciones: opciones.map(({ carrier, service, ...o }) => o) }, 409);
+    return json({ ok: false, cambio: true, error: `El envío cambió a USD ${envio.usd}. Revisa el total y confirma de nuevo.`, opciones: opciones.map(({ carrier, service, ciudadDHL, aprox, ...o }) => o) }, 409);
   }
   const envioUSD = envio.usd;
   const pesoKg = Math.round(C.pesoGramos(lineas) / 10) / 100;
@@ -661,7 +682,7 @@ async function crearPedidoPaypal(cuerpo, url, env, request) {
       id, fecha: ahora, canal: "web", etapa: "por_pagar", tipo: "paypal", metodo: "paypal", moneda: "USD",
       total, valorPedido: Math.round(subtotal + envioUSD * tasa), subtotal, tasa, recargoPorcentaje: recargo,
       lineas, productos: items.map((x) => `${x.nombre} = ${pesos(x.cop)} (${dolares(x.centavos / 100)})`), regalo: regalo ? `${regalo.pares} pares de patapioja sintética` : "",
-      envio: { valor: envioUSD, moneda: "USD", detalle: detalleEnvio, pesoKg, tipo: envio.id, ...(envio.id === "dhl" ? { carrier: envio.carrier, service: envio.service } : {}) },
+      envio: { valor: envioUSD, moneda: "USD", detalle: detalleEnvio + (envio.aprox ? ` · cotizado con ${envio.ciudadDHL}: confirma en Envia si ${cliente.ciudad} tiene recargo de zona remota` : ""), pesoKg, tipo: envio.id, ...(envio.id === "dhl" ? { carrier: envio.carrier, service: envio.service, ciudadDHL: envio.ciudadDHL } : {}) },
       cliente: { ...cliente, destino: `${cliente.direccion}, ${cliente.ciudad}, ${cliente.departamento}${cliente.postal ? ` ${cliente.postal}` : ""} (${nombrePais(cliente.pais)})` },
       paypalOrden: orden.orden, pagos: [], historial: [{ fecha: ahora, texto: `Pedido creado en la página; enviado a PayPal (orden ${orden.orden})` }],
     }).catch((e) => console.error("KV pedido PayPal", e && e.message));
