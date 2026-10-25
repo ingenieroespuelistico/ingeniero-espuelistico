@@ -23,7 +23,7 @@ import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-25.2";
+const VERSION = "2026-10-25.3";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -319,7 +319,10 @@ async function fleteDHL(lineas, dest, env) {
       settings: { currency: "USD" },
     };
     // Se prueba con el código de la región de Envia y, si no sirve, sin región (DHL cotiza con país, ciudad y código postal)
-    const estados = [...new Set([...(await codigoEstado(dest.pais, dest.region, env)), ""])];
+    // Último recurso: unas iniciales de la región (algunos países exigen el campo, pero DHL cotiza con la ciudad)
+    const palabras = sinPrefijo(dest.region).toUpperCase().split(" ").filter((p) => p.length > 2);
+    const iniciales = palabras.length > 1 ? palabras.map((p) => p[0]).join("").slice(0, 3) : (palabras[0] || "").slice(0, 2);
+    const estados = [...new Set([...(await codigoEstado(dest.pais, dest.region, env)), "", iniciales].filter((x, i, a) => x || i === a.indexOf("")))];
     let tarifas = [];
     for (const estado of estados) {
       cuerpo.destination.state = estado;
