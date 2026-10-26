@@ -220,7 +220,7 @@ ${imagenes[0] ? `<meta property="og:image" content="${imagenes[0]}">` : ""}
 <meta property="og:locale" content="es_CO">
 <link rel="icon" href="/icono.svg" type="image/svg+xml">
 ${FUENTE}
-<link rel="stylesheet" href="/css/estilos.css?v=16">
+<link rel="stylesheet" href="/css/estilos.css?v=17">
 <link rel="stylesheet" href="/css/secciones.css?v=16">
 ${ld(datosProducto)}
 ${ld(migas)}
@@ -296,7 +296,7 @@ for (const g of PAGINAS_SEO) {
 <meta property="og:locale" content="es_CO">
 <link rel="icon" href="/icono.svg" type="image/svg+xml">
 ${FUENTE}
-<link rel="stylesheet" href="/css/estilos.css?v=16">
+<link rel="stylesheet" href="/css/estilos.css?v=17">
 <link rel="stylesheet" href="/css/secciones.css?v=16">
 ${datos.map(ld).join("\n")}
 </head>
