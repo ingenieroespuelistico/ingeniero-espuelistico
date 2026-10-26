@@ -23,7 +23,7 @@ import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 
-const VERSION = "2026-10-25.6";
+const VERSION = "2026-10-25.7";
 const C = Tienda.Calculo;
 
 const CABECERAS = {
@@ -115,6 +115,8 @@ export default {
         return await atenderAdmin(request, url, env, { json, error, leerJSON, mismoOrigen, telegram, idPedido, CABECERAS, diagnostico });
       }
       if (ruta.startsWith("/api/")) return error("No encontrado", 404);
+      // Videos y audios: el iPhone solo los reproduce si el servidor entrega pedazos (Range)
+      if (/\.(mp4|mp3|m4a)$/i.test(ruta)) return await medioConRango(request, env);
       return env.ASSETS.fetch(request);
     } catch (e) {
       console.error("Error en", ruta, e && e.stack || e);
@@ -837,6 +839,31 @@ async function estadoPago(url, env) {
   const ped = env.PEDIDOS ? await leerPedido(env, ref).catch(() => null) : null;
   const resumen = ped ? { productos: ped.productos || [], regalo: ped.regalo || "", envio: ped.envio ? { valor: ped.envio.valor, transportadora: ped.envio.transportadora || "", dias: ped.envio.dias || "" } : null, cobrarAlRecibir: ped.cobrarAlRecibir || 0, ciudad: (ped.cliente && ped.cliente.ciudad) || "" } : null;
   return json({ ...base, pedido: p.external_reference, total: p.transaction_amount, valorPedido: Number(m.subtotal_productos || 0) + Number(m.envio_valor || 0) || p.transaction_amount, resumen });
+}
+
+/* ---------------- Videos y audios con soporte de Range (206) ---------------- */
+async function medioConRango(request, env) {
+  const base = await env.ASSETS.fetch(new Request(request.url, { method: "GET" }));
+  if (!base.ok) return base;
+  const cab = new Headers(base.headers);
+  cab.set("Accept-Ranges", "bytes");
+  const rango = request.headers.get("Range");
+  const m = rango && /^bytes=(\d*)-(\d*)$/.exec(rango.trim());
+  if (!m || (m[1] === "" && m[2] === "")) {
+    return new Response(request.method === "HEAD" ? null : base.body, { status: 200, headers: cab });
+  }
+  const datos = await base.arrayBuffer();
+  const total = datos.byteLength;
+  let ini, fin;
+  if (m[1] === "") { ini = Math.max(0, total - Number(m[2])); fin = total - 1; }
+  else { ini = Number(m[1]); fin = m[2] === "" ? total - 1 : Math.min(Number(m[2]), total - 1); }
+  if (ini >= total || fin < ini) {
+    cab.set("Content-Range", `bytes */${total}`); cab.delete("Content-Length");
+    return new Response(null, { status: 416, headers: cab });
+  }
+  cab.set("Content-Range", `bytes ${ini}-${fin}/${total}`);
+  cab.set("Content-Length", String(fin - ini + 1));
+  return new Response(request.method === "HEAD" ? null : datos.slice(ini, fin + 1), { status: 206, headers: cab });
 }
 
 /* ---------------- Turnstile (protección contra robots) ---------------- */

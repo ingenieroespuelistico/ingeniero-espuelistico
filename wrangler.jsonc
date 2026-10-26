@@ -20,8 +20,9 @@
   "assets": {
     "directory": "./sitio",
     "binding": "ASSETS",
-    // Solo las direcciones /api/... pasan por el servidor; todo lo demás se sirve directo (gratis e ilimitado)
-    "run_worker_first": ["/api/*"]
+    // Solo /api/... (y los videos y audios, para que el iPhone pueda adelantarlos) pasan por el servidor;
+    // todo lo demás se sirve directo (gratis e ilimitado)
+    "run_worker_first": ["/api/*", "/fotos/taller/*", "/resenas/*"]
   },
   // Base de pedidos y clientes (espacio KV "ie_pedidos")
   "kv_namespaces": [{ "binding": "PEDIDOS", "id": "f0afa9fa377c4c6fae242f1f57aac709" }],
