@@ -9,6 +9,6 @@
   ],
   "pesoPar": 2.4,
   "color": "#E9EDF2",
-  "descripcion": "Espuela de una sola pieza: casquillo y espiga moldeados juntos en material sintético blanco, sin casquillo metálico. Se fabrica en 40 líneas.",
+  "descripcion": "Espuela de una sola pieza: casquillo y espiga moldeados juntos en material sintético blanco, sin casquillo metálico. Se fabrica en 40 líneas. La espiga puede venir con forro morado o azul, según disponibilidad.",
   "dureza": "Extrema"
 });

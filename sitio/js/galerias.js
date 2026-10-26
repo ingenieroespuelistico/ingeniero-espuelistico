@@ -26,12 +26,16 @@
     const fotos = await buscarFotos(carpeta);
     if (!fotos.length) { raiz.hidden = true; return; } // sin fotos no se muestra el carrusel
     const marco = $(".carrusel__marco", raiz), puntos = $(".carrusel__puntos", raiz);
-    marco.innerHTML = `<div class="carrusel__pista">${fotos.map((f, i) =>
-      `<img src="${f}" alt="${escapar(descripcion)} ${i + 1} de ${fotos.length}" ${i ? 'loading="lazy"' : ""} draggable="false">`).join("")}</div>`;
+    marco.innerHTML = `<div class="carrusel__pista">${fotos.map((f, i) => /\.mp4$/i.test(f)
+      ? `<video src="${f}" poster="${f.replace(/\.mp4$/i, "-portada.jpg")}" controls playsinline preload="none" aria-label="${escapar(descripcion)} ${i + 1} de ${fotos.length} (video)"></video>`
+      : `<img src="${f}" alt="${escapar(descripcion)} ${i + 1} de ${fotos.length}" ${i ? 'loading="lazy"' : ""} draggable="false">`).join("")}</div>`;
     const pista = $(".carrusel__pista", marco);
+    const videos = $$("video", pista);
     let i = 0, temporizador = null;
     const ir = (n) => {
+      videos.forEach((v) => { if (!v.paused) v.pause(); }); // al pasar de foto, el video se detiene
       i = (n + fotos.length) % fotos.length;
+      raiz.toggleAttribute("data-en-video", /\.mp4$/i.test(fotos[i])); // los puntos suben para no tapar los controles del video
       pista.style.transform = `translateX(${-i * 100}%)`;
       $$("button", puntos).forEach((b, k) => b.setAttribute("aria-current", k === i ? "true" : "false"));
     };
@@ -53,6 +57,9 @@
       raiz.addEventListener("mouseenter", parar);
       raiz.addEventListener("mouseleave", reiniciar);
       raiz.addEventListener("focusin", parar);
+      // Mientras el video suena, el carrusel no avanza solo
+      videos.forEach((v) => { v.addEventListener("play", () => { parar(); raiz.dataset.video = "1"; }); v.addEventListener("pause", () => { delete raiz.dataset.video; }); v.addEventListener("ended", reiniciar); });
+      raiz.addEventListener("mouseleave", () => { if (raiz.dataset.video) parar(); });
       reiniciar();
     }
     ir(0);

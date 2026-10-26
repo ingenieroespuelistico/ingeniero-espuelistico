@@ -17,6 +17,6 @@
     }
   ],
   "pesoPar": 1.25,
-  "descripcion": "Patapioja sintética (también llamada patera, zapatola o parrilla), fabricada por nosotros. Pensada para durar como una metálica a menor precio. Negra, más resistente a la temperatura, o amarilla acrílica, más vistosa.",
+  "descripcion": "Patapioja sintética (también llamada patera, zapatola o parrilla), fabricada por nosotros. Pensada para durar como una metálica a menor precio. Negra, más resistente a la temperatura, o amarilla acrílica, más vistosa. Según disponibilidad, también en café y en blanco.",
   "dureza": "Extrema"
 });

@@ -38,7 +38,9 @@ const dirFotos = join(sitio, "fotos");
 for (const carpeta of readdirSync(dirFotos)) {
   const d = join(dirFotos, carpeta);
   if (!statSync(d).isDirectory()) continue;
-  const archivos = readdirSync(d).filter((f) => /^\d+\.(jpe?g|png|webp)$/i.test(f)).sort((a, b) => parseInt(a) - parseInt(b));
+  // En la carpeta del taller también se aceptan videos (.mp4, con su portada N-portada.jpg); en los productos solo fotos
+  const tipos = carpeta === "taller" ? /^\d+\.(jpe?g|png|webp|mp4)$/i : /^\d+\.(jpe?g|png|webp)$/i;
+  const archivos = readdirSync(d).filter((f) => tipos.test(f)).sort((a, b) => parseInt(a) - parseInt(b));
   // Solo números seguidos (1, 2, 3...), como funcionaba antes
   const lista = [];
   for (let n = 1; ; n++) { const f = archivos.find((x) => parseInt(x) === n); if (!f) break; lista.push(`fotos/${carpeta}/${f}`); }
@@ -218,8 +220,8 @@ ${imagenes[0] ? `<meta property="og:image" content="${imagenes[0]}">` : ""}
 <meta property="og:locale" content="es_CO">
 <link rel="icon" href="/icono.svg" type="image/svg+xml">
 ${FUENTE}
-<link rel="stylesheet" href="/css/estilos.css?v=15">
-<link rel="stylesheet" href="/css/secciones.css?v=15">
+<link rel="stylesheet" href="/css/estilos.css?v=16">
+<link rel="stylesheet" href="/css/secciones.css?v=16">
 ${ld(datosProducto)}
 ${ld(migas)}
 </head>
@@ -250,7 +252,7 @@ ${CABECERA}
   <section class="pp-seccion"><h2>Otros productos</h2><ul class="pp-relacionados">${enlacesProductos(p.id)}</ul></section>
 </main>
 ${pie()}
-<script src="/js/medicion.js?v=15" defer></script>
+<script src="/js/medicion.js?v=16" defer></script>
 </body>
 </html>
 `;
@@ -294,8 +296,8 @@ for (const g of PAGINAS_SEO) {
 <meta property="og:locale" content="es_CO">
 <link rel="icon" href="/icono.svg" type="image/svg+xml">
 ${FUENTE}
-<link rel="stylesheet" href="/css/estilos.css?v=15">
-<link rel="stylesheet" href="/css/secciones.css?v=15">
+<link rel="stylesheet" href="/css/estilos.css?v=16">
+<link rel="stylesheet" href="/css/secciones.css?v=16">
 ${datos.map(ld).join("\n")}
 </head>
 <body class="pagina-producto pagina-guia">
@@ -310,7 +312,7 @@ ${cuerpo}
   <section class="pp-seccion"><h2>Productos</h2><ul class="pp-relacionados">${enlacesProductos()}</ul></section>
 </main>
 ${pie()}
-<script src="/js/medicion.js?v=15" defer></script>
+<script src="/js/medicion.js?v=16" defer></script>
 </body>
 </html>
 `;

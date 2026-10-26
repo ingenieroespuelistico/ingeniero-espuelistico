@@ -13,6 +13,6 @@
   ],
   "pesoPar": 4.5,
   "color": "#1D2430",
-  "descripcion": "Espiga de material reforzado negro con el mismo casquillo metálico torneado de la acrílica. Se fabrica en 35, 38, 40, 42 y 43 líneas. En bolsa o en caja viene forrada con plástico removible.",
+  "descripcion": "Espiga de material reforzado negro con el mismo casquillo metálico torneado de la acrílica. Se fabrica en 35, 38, 40, 42 y 43 líneas. En bolsa o en caja viene forrada con plástico removible: transparente, morado o azul, según disponibilidad.",
   "dureza": "Extrema"
 });

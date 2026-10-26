@@ -17,7 +17,7 @@ const window = {};
   ],
   "pesoPar": 4.5,
   "color": "#F2B705",
-  "descripcion": "Espiga de acrílico amarillo translúcido montada en casquillo metálico torneado en nuestro taller. Se fabrica en 35, 38, 40, 42 y 43 líneas. En bolsa o en caja viene forrada con plástico removible y sellada para el uso.",
+  "descripcion": "Espiga de acrílico amarillo translúcido montada en casquillo metálico torneado en nuestro taller. Se fabrica en 35, 38, 40, 42 y 43 líneas. En bolsa o en caja viene forrada con plástico removible y sellada para el uso. El forro puede ser transparente, morado o azul, según disponibilidad.",
   "dureza": "Extrema"
 });
 
@@ -37,7 +37,7 @@ const window = {};
   ],
   "pesoPar": 4.5,
   "color": "#1D2430",
-  "descripcion": "Espiga de material reforzado negro con el mismo casquillo metálico torneado de la acrílica. Se fabrica en 35, 38, 40, 42 y 43 líneas. En bolsa o en caja viene forrada con plástico removible.",
+  "descripcion": "Espiga de material reforzado negro con el mismo casquillo metálico torneado de la acrílica. Se fabrica en 35, 38, 40, 42 y 43 líneas. En bolsa o en caja viene forrada con plástico removible: transparente, morado o azul, según disponibilidad.",
   "dureza": "Extrema"
 });
 
@@ -53,7 +53,7 @@ const window = {};
   ],
   "pesoPar": 2.4,
   "color": "#E9EDF2",
-  "descripcion": "Espuela de una sola pieza: casquillo y espiga moldeados juntos en material sintético blanco, sin casquillo metálico. Se fabrica en 40 líneas.",
+  "descripcion": "Espuela de una sola pieza: casquillo y espiga moldeados juntos en material sintético blanco, sin casquillo metálico. Se fabrica en 40 líneas. La espiga puede venir con forro morado o azul, según disponibilidad.",
   "dureza": "Extrema"
 });
 
@@ -71,7 +71,7 @@ const window = {};
   ],
   "pesoPar": 2.4,
   "color": "#1D2430",
-  "descripcion": "Espuela de una sola pieza en material reforzado negro, sin casquillo metálico. Se fabrica en 30, 35 y 40 líneas.",
+  "descripcion": "Espuela de una sola pieza en material reforzado negro, sin casquillo metálico. Se fabrica en 30, 35 y 40 líneas. La espiga puede venir con forro morado o azul, según disponibilidad.",
   "dureza": "Extrema"
 });
 
@@ -95,7 +95,7 @@ const window = {};
     }
   ],
   "pesoPar": 1.25,
-  "descripcion": "Patapioja sintética (también llamada patera, zapatola o parrilla), fabricada por nosotros. Pensada para durar como una metálica a menor precio. Negra, más resistente a la temperatura, o amarilla acrílica, más vistosa.",
+  "descripcion": "Patapioja sintética (también llamada patera, zapatola o parrilla), fabricada por nosotros. Pensada para durar como una metálica a menor precio. Negra, más resistente a la temperatura, o amarilla acrílica, más vistosa. Según disponibilidad, también en café y en blanco.",
   "dureza": "Extrema"
 });
 

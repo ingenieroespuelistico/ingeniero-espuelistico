@@ -13,6 +13,6 @@
   ],
   "pesoPar": 4.5,
   "color": "#F2B705",
-  "descripcion": "Espiga de acrílico amarillo translúcido montada en casquillo metálico torneado en nuestro taller. Se fabrica en 35, 38, 40, 42 y 43 líneas. En bolsa o en caja viene forrada con plástico removible y sellada para el uso.",
+  "descripcion": "Espiga de acrílico amarillo translúcido montada en casquillo metálico torneado en nuestro taller. Se fabrica en 35, 38, 40, 42 y 43 líneas. En bolsa o en caja viene forrada con plástico removible y sellada para el uso. El forro puede ser transparente, morado o azul, según disponibilidad.",
   "dureza": "Extrema"
 });

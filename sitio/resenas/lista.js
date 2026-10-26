@@ -8,6 +8,11 @@ const RESENAS = [
   { tipo: "foto", archivo: "captura-4.jpg", cliente: "Cliente en Colombia", texto: "“Excelente la calidad de la espuela”" },
   { tipo: "foto", archivo: "captura-6.jpg", cliente: "Comentario en Facebook", texto: "“Ya te compré y las probé, son súper buenas, no pierden el filo”" },
   { tipo: "foto", archivo: "captura-5.jpg", cliente: "Comentario en Facebook", texto: "“Excelente producto”" },
-  // Audios de clientes: se publican cuando el dueño confirme que cada cliente dio permiso
-  // { tipo: "audio", archivo: "audio-1.mp3", cliente: "Cliente en Costa Rica" },
+  { tipo: "audio", archivo: "audio-1.mp3", cliente: "Nota de voz de un cliente" },
+  { tipo: "audio", archivo: "audio-2.mp3", cliente: "Nota de voz de un cliente" },
+  { tipo: "audio", archivo: "audio-3.mp3", cliente: "Nota de voz de un cliente" },
+  { tipo: "audio", archivo: "audio-4.mp3", cliente: "Nota de voz de un cliente" },
+  { tipo: "audio", archivo: "audio-5.mp3", cliente: "Nota de voz de un cliente" },
+  { tipo: "audio", archivo: "audio-6.mp3", cliente: "Nota de voz de un cliente" },
+  { tipo: "audio", archivo: "audio-7.mp3", cliente: "Nota de voz de un cliente" },
 ];

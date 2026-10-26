@@ -15,7 +15,7 @@ if (!archivosProductos.length) throw new Error("No hay productos en sitio/js/pro
 let html = readFileSync(join(sitio, "index.html"), "utf8");
 const reProductos = /(<!-- productos:inicio[^>]*-->\n)[\s\S]*?(<!-- productos:fin -->)/;
 if (!reProductos.test(html)) throw new Error("Falta la marca <!-- productos:inicio --> en index.html");
-html = html.replace(reProductos, (_, a, b) => a + archivosProductos.map((f) => `<script src="js/productos/${f}?v=15" defer></script>\n`).join("") + b);
+html = html.replace(reProductos, (_, a, b) => a + archivosProductos.map((f) => `<script src="js/productos/${f}?v=16" defer></script>\n`).join("") + b);
 writeFileSync(join(sitio, "index.html"), html);
 // Los productos que están en index.html (en su orden), y los archivos de precios y cálculo
 const scripts = [...html.matchAll(/<script src="(js\/[^"?]+)(?:\?[^"]*)?"[^>]*><\/script>/g)].map((m) => m[1]);

@@ -11,6 +11,6 @@
   ],
   "pesoPar": 2.4,
   "color": "#1D2430",
-  "descripcion": "Espuela de una sola pieza en material reforzado negro, sin casquillo metálico. Se fabrica en 30, 35 y 40 líneas.",
+  "descripcion": "Espuela de una sola pieza en material reforzado negro, sin casquillo metálico. Se fabrica en 30, 35 y 40 líneas. La espiga puede venir con forro morado o azul, según disponibilidad.",
   "dureza": "Extrema"
 });
