@@ -58,6 +58,17 @@ const PIXEL_TIKTOK = "DBDV8JBC77U4J2JQC9OG"; // TikTok Ads Manager → Herramien
 
   // Eventos de la tienda. Si no hay permiso, se descartan (no se guardan).
   function evento(nombre, datos) {
+    // Umami (sin cookies ni datos personales): cuenta el embudo aunque no se acepten las cookies de publicidad
+    try {
+      if (window.umami && typeof window.umami.track === "function") {
+        const u = {}, x = datos || {};
+        if (x.content_name) u.producto = String(x.content_name).slice(0, 60);
+        if (x.num_items) u.productos = x.num_items;
+        if (nombre === "Purchase" && x.value) { u.revenue = Number(x.value); u.currency = x.currency || "COP"; }
+        else if (x.value) u.valor = Number(x.value);
+        window.umami.track(nombre, u);
+      }
+    } catch (e) { /* la medición nunca debe romper la página */ }
     if (decision !== "si" || !hayPixel) return;
     const d = Object.assign({ currency: "COP" }, datos || {});
     if (PIXEL_META && window.fbq) window.fbq("track", nombre, d);

@@ -224,6 +224,7 @@ ${FUENTE}
 <link rel="stylesheet" href="/css/secciones.css?v=16">
 ${ld(datosProducto)}
 ${ld(migas)}
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e0426d1c-3139-4245-97ad-1efe7a9bae49" data-domains="ingenieroespuelistico.com"></script>
 </head>
 <body class="pagina-producto">
 ${CABECERA}
@@ -252,7 +253,7 @@ ${CABECERA}
   <section class="pp-seccion"><h2>Otros productos</h2><ul class="pp-relacionados">${enlacesProductos(p.id)}</ul></section>
 </main>
 ${pie()}
-<script src="/js/medicion.js?v=16" defer></script>
+<script src="/js/medicion.js?v=17" defer></script>
 </body>
 </html>
 `;
@@ -299,6 +300,7 @@ ${FUENTE}
 <link rel="stylesheet" href="/css/estilos.css?v=17">
 <link rel="stylesheet" href="/css/secciones.css?v=16">
 ${datos.map(ld).join("\n")}
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e0426d1c-3139-4245-97ad-1efe7a9bae49" data-domains="ingenieroespuelistico.com"></script>
 </head>
 <body class="pagina-producto pagina-guia">
 ${CABECERA}
@@ -312,7 +314,7 @@ ${cuerpo}
   <section class="pp-seccion"><h2>Productos</h2><ul class="pp-relacionados">${enlacesProductos()}</ul></section>
 </main>
 ${pie()}
-<script src="/js/medicion.js?v=16" defer></script>
+<script src="/js/medicion.js?v=17" defer></script>
 </body>
 </html>
 `;
