@@ -393,6 +393,7 @@
     const sub = subtotal();
     const previo = (caja.querySelector("input[name=pago]:checked") || {}).value;
     const sinEnvio = paisSinEnvio();
+    $("#carrito-wa").hidden = !pedido.length || Boolean(sinEnvio);
     $("#boton-confirmar").disabled = Boolean(sinEnvio);
     $("#fila-postal").hidden = pais === "Colombia" || Boolean(sinEnvio);
     if (pais === "Colombia" || sinEnvio) $("#opciones-envio").hidden = true;
@@ -648,6 +649,29 @@
     }
     window.Medicion && Medicion.evento("InitiateCheckout", { value: Math.round(subtotal()), num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
     window.open(enlaceWA(texto), "_blank", "noopener");
+  });
+
+  /* ---------- Completar el pedido por WhatsApp (sin llenar el formulario) ---------- */
+  // Manda el carrito armado y, si ya los escribió, el nombre y el destino. La venta se cierra por chat.
+  function textoCarritoWA() {
+    const f = $("#formulario-pedido"), u = ubicacionPedido;
+    const valor = (n) => ((f.elements[n] || {}).value || "").trim();
+    const pares = paresEspuela(), regalo = regaloPara(pares), sub = subtotal();
+    const pais = u ? u.paisNombre() : "Colombia";
+    const destino = [u ? u.ciudad() : "", u ? u.region() : "", pais].filter(Boolean).join(", ");
+    return [
+      "Hola, quiero completar este pedido por WhatsApp:",
+      ...pedido.map((l) => { const x = describirLinea(l); return `• ${x.nombre}: ${x.detalle} = ${pesosCOP(precioLinea(l).total)}`; }),
+      regalo ? `Regalo: ${regalo.pares} pares de patapioja sintética` : "",
+      `Subtotal: ${pesosCOP(sub)} COP${window.Moneda && !Moneda.esCOP() ? ` (${Moneda.formatear(sub)})` : ""}`,
+      `Envío a: ${destino}`,
+      valor("nombre") ? `Nombre: ${valor("nombre")}` : "",
+    ].filter(Boolean).join("\n");
+  }
+  $("#boton-carrito-wa").addEventListener("click", () => {
+    if (!pedido.length) return;
+    window.Medicion && Medicion.evento("Contact", { content_name: "WhatsApp desde el carrito", value: Math.round(subtotal()), num_items: pedido.length });
+    window.open(enlaceWA(textoCarritoWA()), "_blank", "noopener");
   });
 
   /* ---------- Turnstile: comprobación anti-robots de Cloudflare (solo si está configurada en datos.js) ---------- */

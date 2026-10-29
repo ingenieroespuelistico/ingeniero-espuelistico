@@ -219,6 +219,7 @@ section { padding: 72px 0; }
 .sugerencia button { margin-top: 8px; background: var(--verde); color: #fff; border: 0; border-radius: 999px; padding: 10px 16px; font: 700 .9rem var(--fuente); cursor: pointer; }
 .panel__totales { display: grid; gap: 6px; background: var(--azul-claro); border-radius: var(--radio); padding: 16px; }
 .panel__totales div { display: flex; justify-content: space-between; gap: 12px; }
+.panel__totales [hidden] { display: none; }
 .panel__totales .total { font-size: 1.2rem; font-weight: 800; }
 .formulario { display: grid; gap: 12px; }
 .formulario h3 { margin: 8px 0 0; }
@@ -234,6 +235,12 @@ section { padding: 72px 0; }
 .opcion-envio__texto small { color: var(--tinta-suave); font-weight: 400; }
 .opcion-envio__precio { font-weight: 800; white-space: nowrap; }
 .opciones-envio__nota { font-size: .82rem; color: var(--tinta-suave); margin: 0; }
+.carrito-wa { display: grid; gap: 6px; }
+.carrito-wa[hidden] { display: none; }
+.carrito-wa__boton { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 52px; padding: 12px 16px; border: 0; border-radius: 999px; background: var(--verde); color: #fff; font: inherit; font-weight: 700; font-size: 1rem; cursor: pointer; }
+.carrito-wa__boton:hover { background: #12733F; }
+.carrito-wa__boton:focus-visible { outline: 3px solid var(--azul); outline-offset: 2px; }
+.carrito-wa__nota { margin: 0; font-size: .85rem; color: var(--tinta-suave); text-align: center; }
 .nota-envio { font-size: .92rem; color: var(--tinta-suave); background: var(--papel); border-radius: 8px; padding: 10px 12px; }
 .formulario__error { color: var(--azul-oscuro); font-weight: 600; margin: 0; min-height: 1em; }
 .formulario__aviso { font-size: .85rem; color: var(--tinta-suave); margin: 0; }
