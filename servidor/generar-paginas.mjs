@@ -346,10 +346,8 @@ const tienda = {
   },
   currenciesAccepted: "COP",
   paymentAccepted: "PSE, tarjeta de crédito, tarjeta débito, Efecty, contraentrega, PayPal, Western Union",
-  hasOfferCatalog: {
-    "@type": "OfferCatalog", name: "Catálogo",
-    itemListElement: productos.map((p) => ({ "@type": "Offer", url: absoluta(urlProducto(p)), itemOffered: { "@type": "Product", name: p.nombre } })),
-  },
+  // Sin catálogo de productos aquí: Google tomaba cada producto de la lista como una ficha incompleta (sin precio)
+  // y marcaba "Fragmentos de productos: elementos no válidos". Cada producto tiene sus datos completos en su página.
 };
 const web = { "@context": "https://schema.org", "@type": "WebSite", name: "Ingeniero Espuelístico", url: absoluta("/"), inLanguage: "es-CO" };
 const faq = {
