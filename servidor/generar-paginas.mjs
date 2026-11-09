@@ -455,7 +455,7 @@ console.log(`Páginas generadas: ${productos.length} productos, ${Object.keys(FO
     const fotos = (FOTOS[p.id] || []).map((f) => absoluta("/" + f));
     if (!fotos.length) continue; // Meta exige foto
     const base = {
-      link: absoluta(urlProducto(p)), image_link: fotos[0], additional_image_link: fotos.slice(1, 11).join(","),
+      link: absoluta(urlProducto(p)), image_link: fotos[0], additional_image_link: fotos.slice(1, 21).join(","), // Meta acepta hasta 20 fotos adicionales
       availability: "in stock", condition: "new", brand: propio(p) ? "Ingeniero Espuelístico" : "Genérico",
       google_product_category: "Animals & Pet Supplies > Pet Supplies",
     };
@@ -466,19 +466,33 @@ console.log(`Páginas generadas: ${productos.length} productos, ${Object.keys(FO
       mayor ? `Precio ${por} al detal; ${mayor}.` : "",
       "Envíos a toda Colombia y al exterior. Pago seguro en ingenieroespuelistico.com o por WhatsApp.",
     ].filter(Boolean).join(" ");
-    if (p.tipo === "unidad-docena" || p.tipo === "variantes") {
+    if (p.tipo === "espuela") {
+      // Un artículo por presentación (bolsa, caja, granel), cada uno con su precio por par
+      for (const pr of Tienda.PRESENTACIONES) {
+        fila({ ...base, id: `${p.id}-${pr.id}`, item_group_id: p.id, additional_variant_attribute: `Presentación:${pr.nombre}`,
+          title: `${p.nombre} – ${pr.nombre}${sufijo}`.slice(0, 150),
+          description: `${p.descripcion} Presentación: ${pr.nombre.toLowerCase()} (${pr.nota.toLowerCase()}). ${extra}`.slice(0, 5000),
+          price: `${Math.round(precioDetal(p) + (pr.ajuste || 0))} COP` });
+      }
+    } else if (p.tipo === "unidad-docena" || p.tipo === "variantes") {
       for (const v of p.variantes) {
         const precio = p.tipo === "unidad-docena" ? v.unidad : v.precio;
         if (!precio) continue;
-        fila({ ...base, id: `${p.id}-${v.id}`, item_group_id: p.id, title: `${p.nombre} – ${v.nombre}${sufijo}`.slice(0, 150),
-          description: `${p.descripcion} ${p.tipo === "unidad-docena" && v.docena ? `Docena: ${pesos(v.docena)}.` : ""} ${extra}`.slice(0, 5000), price: `${Math.round(precio)} COP` });
+        const atributo = `${p.etiquetaVariante || "Tipo"}:${v.nombre}`;
+        fila({ ...base, id: `${p.id}-${v.id}`, item_group_id: p.id, additional_variant_attribute: atributo, title: `${p.nombre} – ${v.nombre}${sufijo}`.slice(0, 150),
+          description: `${p.descripcion} ${extra}`.slice(0, 5000), price: `${Math.round(precio)} COP` });
+        if (p.tipo === "unidad-docena" && v.docena) {
+          fila({ ...base, id: `${p.id}-${v.id}-docena`, item_group_id: p.id, additional_variant_attribute: `${atributo} · docena`,
+            title: `${p.nombre} – ${v.nombre} (docena)`.slice(0, 150),
+            description: `${p.descripcion} Docena de 12. ${extra}`.slice(0, 5000), price: `${Math.round(v.docena)} COP` });
+        }
       }
     } else {
       fila({ ...base, id: p.id, item_group_id: "", title: `${p.nombre}${sufijo}`.slice(0, 150),
         description: `${p.descripcion} ${extra}`.slice(0, 5000), price: `${Math.round(precioDetal(p))} COP` });
     }
   }
-  const cols = ["id", "title", "description", "availability", "condition", "price", "link", "image_link", "additional_image_link", "brand", "google_product_category", "item_group_id"];
+  const cols = ["id", "title", "description", "availability", "condition", "price", "link", "image_link", "additional_image_link", "brand", "google_product_category", "item_group_id", "additional_variant_attribute"];
   writeFileSync(join(sitio, "catalogo-meta.csv"), [cols.join(","), ...filas.map((f) => cols.map((c) => csv(f[c])).join(","))].join("\n") + "\n");
   console.log(`Catálogo de Meta: ${filas.length} artículos en sitio/catalogo-meta.csv`);
 }
