@@ -6,6 +6,15 @@
   const pesos = (n) => (window.Moneda ? Moneda.formatear(n) : "$" + Math.round(n).toLocaleString("es-CO"));
   const pesosCOP = (n) => "$" + Math.round(n).toLocaleString("es-CO");
   const prod = (id) => PRODUCTOS.find((p) => p.id === id);
+  // Id del artículo en el catálogo de Meta (catalogo-meta.csv): debe coincidir para que Meta asocie visitas y compras
+  function idCatalogo(l) {
+    const p = prod(l.producto) || {};
+    if (p.tipo === "espuela") return `${l.producto}-${l.presentacion || "bolsa"}`;
+    if (p.tipo === "unidad-docena") return `${l.producto}-${l.variante}${l.cantidad >= 12 ? "-docena" : ""}`;
+    if (p.tipo === "variantes") return `${l.producto}-${l.variante}`;
+    return l.producto;
+  }
+  const idsCatalogo = () => [...new Set(pedido.map(idCatalogo))];
   const medidaTexto = (mm) => `${mm} líneas - ${PULGADAS[mm]}`;
 
   /* ---------- Contacto ---------- */
@@ -285,7 +294,7 @@
     $("#ficha-titulo").textContent = p.nombre;
     $("#ficha-detalle").textContent = p.detalle;
     $("#ficha-descripcion").textContent = FICHAS[id].descripcion;
-    window.Medicion && Medicion.evento("ViewContent", { content_ids: [id], content_name: p.nombre, content_type: "product" });
+    window.Medicion && Medicion.evento("ViewContent", { content_ids: [id], content_name: p.nombre, content_type: "product_group" });
     $("#ficha-dureza").innerHTML = barraDureza(p);
     $("#ficha-campos").innerHTML = camposFicha(p);
     $("#ficha-agregado").textContent = "";
@@ -337,7 +346,7 @@
     const nueva = lineaDesdeFormulario(e.target, fichaProducto.id);
     agregar(nueva);
     actualizarPrecioFicha();
-    window.Medicion && Medicion.evento("AddToCart", { value: Math.round(precioLinea(nueva).total), content_ids: [fichaProducto.id], content_name: fichaProducto.nombre, content_type: "product" });
+    window.Medicion && Medicion.evento("AddToCart", { value: Math.round(precioLinea(nueva).total), content_ids: [idCatalogo(nueva)], content_name: fichaProducto.nombre, content_type: "product" });
     const aviso = $("#ficha-agregado");
     aviso.innerHTML = `Agregado a tu pedido. <a href="#" data-ver>Ver pedido</a>`;
     $("[data-ver]", aviso).addEventListener("click", (ev) => { ev.preventDefault(); cerrarFicha(); abrirPanel(); });
@@ -647,7 +656,7 @@
       irAPaypal(d, cel.numeroE164, texto);
       return;
     }
-    window.Medicion && Medicion.evento("InitiateCheckout", { value: Math.round(subtotal()), num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
+    window.Medicion && Medicion.evento("InitiateCheckout", { value: Math.round(subtotal()), num_items: pedido.length, content_ids: idsCatalogo(), content_type: "product" });
     window.open(enlaceWA(texto), "_blank", "noopener");
   });
 
@@ -745,8 +754,8 @@
         throw new Error(res.error);
       }
       if (!res.ok || !res.url || !/^https:\/\/([a-z0-9-]+\.)*mercadopago\.com(\.[a-z]{2})?\//.test(res.url)) throw new Error(res.error || "No pudimos abrir el pago.");
-      try { sessionStorage.setItem("ie-ultimo-pedido", JSON.stringify({ pedido: res.pedido, total: res.total })); } catch (e) {}
-      window.Medicion && Medicion.evento("InitiateCheckout", { value: res.total, num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
+      try { sessionStorage.setItem("ie-ultimo-pedido", JSON.stringify({ pedido: res.pedido, total: res.total, ids: idsCatalogo() })); } catch (e) {}
+      window.Medicion && Medicion.evento("InitiateCheckout", { value: res.total, num_items: pedido.length, content_ids: idsCatalogo(), content_type: "product" });
       location.href = res.url;
     } catch (e) {
       error.innerHTML = `${escapar(e.message)} <a class="error__wa" href="${enlaceWA(textoWA)}" target="_blank" rel="noopener">Enviar este pedido por WhatsApp</a>`;
@@ -777,8 +786,8 @@
       // El valor del envío cambió desde que se mostró: se actualiza y el cliente confirma de nuevo
       if (res.cambio && Array.isArray(res.opciones) && cotizacion.datos) { cotizacion.datos.opciones = res.opciones; pintarOpcionesEnvio(); pintarEnvio(); }
       if (!res.ok || !res.url || !/^https:\/\/(www\.)?(sandbox\.)?paypal\.com\//.test(res.url)) throw new Error(res.error || "No pudimos abrir PayPal.");
-      try { sessionStorage.setItem("ie-ultimo-pedido", JSON.stringify({ pedido: res.pedido, total: res.total, moneda: "USD" })); } catch (e) {}
-      window.Medicion && Medicion.evento("InitiateCheckout", { value: res.total, currency: "USD", num_items: pedido.length, content_ids: [...new Set(pedido.map((l) => l.producto))] });
+      try { sessionStorage.setItem("ie-ultimo-pedido", JSON.stringify({ pedido: res.pedido, total: res.total, moneda: "USD", ids: idsCatalogo() })); } catch (e) {}
+      window.Medicion && Medicion.evento("InitiateCheckout", { value: res.total, currency: "USD", num_items: pedido.length, content_ids: idsCatalogo(), content_type: "product" });
       location.href = res.url;
     } catch (e) {
       error.innerHTML = `${escapar(e.message)} <a class="error__wa" href="${enlaceWA(textoWA)}" target="_blank" rel="noopener">Enviar este pedido por WhatsApp</a>`;

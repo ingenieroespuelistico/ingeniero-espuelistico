@@ -6,6 +6,8 @@
   const limpio = (v) => (v && v !== "null" ? v : "");
   let ultimo = {};
   try { ultimo = JSON.parse(sessionStorage.getItem("ie-ultimo-pedido") || "{}"); } catch (e) {}
+  // Artículos del catálogo de Meta de esta compra (se guardan al ir a pagar)
+  const datosCompra = Array.isArray(ultimo.ids) && ultimo.ids.length ? { content_ids: ultimo.ids, content_type: "product" } : {};
   const pago = limpio(q.get("payment_id")) || limpio(q.get("collection_id"));
   const orden = limpio(q.get("merchant_order_id"));
   const pedido = limpio(q.get("external_reference")) || ultimo.pedido || "";
@@ -44,7 +46,7 @@
       const ya = `ie-compra-${d.pedido}`;
       let contada = false;
       try { contada = localStorage.getItem(ya) === "1"; localStorage.setItem(ya, "1"); } catch (e) {}
-      if (!contada && window.Medicion) Medicion.evento("Purchase", { value: Number(d.total), currency: "USD" });
+      if (!contada && window.Medicion) Medicion.evento("Purchase", { value: Number(d.total), currency: "USD", ...datosCompra });
     } else if (d && d.ok && d.estado === "sin_pagar") {
       pintar("ℹ️", "No se completó el pago", "PayPal no registra la aprobación del pago y no se hizo ningún cobro. Tu pedido sigue en el carrito: puedes intentarlo de nuevo o escribirnos.");
     } else if (d && d.ok && d.estado === "pending") {
@@ -98,7 +100,7 @@
     const ya = `ie-compra-${d.pedido}`;
     let contada = false;
     try { contada = localStorage.getItem(ya) === "1"; localStorage.setItem(ya, "1"); } catch (e) {}
-    if (!contada && window.Medicion) Medicion.evento("Purchase", { value: Math.round(d.total) });
+    if (!contada && window.Medicion) Medicion.evento("Purchase", { value: Math.round(d.total), ...datosCompra });
   } else if (d && d.ok && (d.estado === "pending" || d.estado === "in_process" || d.estado === "authorized")) {
     pintar("⏳", "Tu pago está en proceso", d.medio === "efecty"
       ? "Paga el código de Efecty antes de que venza. Cuando Mercado Pago nos confirme, despachamos y te escribimos por WhatsApp."

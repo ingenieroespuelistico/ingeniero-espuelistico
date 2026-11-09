@@ -226,7 +226,7 @@ ${ld(datosProducto)}
 ${ld(migas)}
 <script defer src="https://cloud.umami.is/script.js" data-website-id="e0426d1c-3139-4245-97ad-1efe7a9bae49" data-domains="ingenieroespuelistico.com"></script>
 </head>
-<body class="pagina-producto">
+<body class="pagina-producto" data-producto="${esc(p.id)}" data-nombre="${esc(p.nombre)}">
 ${CABECERA}
 <main class="contenedor pp">
   <nav class="pp-migas" aria-label="Ruta"><a href="/">Inicio</a> › <a href="/#catalogo">Catálogo</a> › <span aria-current="page">${esc(p.nombre)}</span></nav>
@@ -253,7 +253,7 @@ ${CABECERA}
   <section class="pp-seccion"><h2>Otros productos</h2><ul class="pp-relacionados">${enlacesProductos(p.id)}</ul></section>
 </main>
 ${pie()}
-<script src="/js/medicion.js?v=17" defer></script>
+<script src="/js/medicion.js?v=19" defer></script>
 </body>
 </html>
 `;
@@ -314,7 +314,7 @@ ${cuerpo}
   <section class="pp-seccion"><h2>Productos</h2><ul class="pp-relacionados">${enlacesProductos()}</ul></section>
 </main>
 ${pie()}
-<script src="/js/medicion.js?v=17" defer></script>
+<script src="/js/medicion.js?v=19" defer></script>
 </body>
 </html>
 `;
@@ -488,7 +488,7 @@ console.log(`Páginas generadas: ${productos.length} productos, ${Object.keys(FO
         }
       }
     } else {
-      fila({ ...base, id: p.id, item_group_id: "", title: `${p.nombre}${sufijo}`.slice(0, 150),
+      fila({ ...base, id: p.id, item_group_id: p.id, title: `${p.nombre}${sufijo}`.slice(0, 150),
         description: `${p.descripcion} ${extra}`.slice(0, 5000), price: `${Math.round(precioDetal(p))} COP` });
     }
   }

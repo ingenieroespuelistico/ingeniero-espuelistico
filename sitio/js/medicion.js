@@ -126,5 +126,8 @@ const PIXEL_TIKTOK = "DBDV8JBC77U4J2JQC9OG"; // TikTok Ads Manager → Herramien
       const a = e.target.closest('a[href*="wa.me/"]');
       if (a) evento("Contact", { content_name: "WhatsApp" });
     });
+    // Página de un producto: Meta la asocia con el grupo de ese producto en el catálogo
+    const b = document.body;
+    if (b && b.dataset.producto) evento("ViewContent", { content_ids: [b.dataset.producto], content_type: "product_group", content_name: b.dataset.nombre || "" });
   });
 })();
