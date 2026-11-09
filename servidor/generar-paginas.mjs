@@ -441,3 +441,44 @@ ${Object.entries(Tienda.PULGADAS).map(([l, pul]) => `- ${l} líneas = ${l} mm �
 - [Peticiones, quejas y reclamos](${absoluta("/pqr")})
 `);
 console.log(`Páginas generadas: ${productos.length} productos, ${Object.keys(FOTOS).length} carpetas con fotos, sitemap con ${paginas.length} direcciones.`);
+
+/* ---------- 7. Catálogo para Meta (Facebook, Instagram y WhatsApp) ----------
+   sitio/catalogo-meta.csv: Meta lo descarga solo todos los días (Commerce Manager → Fuente de datos → URL programada).
+   Sale de los mismos archivos de precios y productos: si cambias un precio aquí, cambia en WhatsApp al día siguiente.
+   Un artículo por producto; cuando las variantes tienen precios distintos (cera, patapioja metálica, esparadrapo),
+   un artículo por variante agrupado con item_group_id. Textos neutros: solo producto, material, medida y precio. */
+{
+  const csv = (v) => `"${String(v ?? "").replace(/"/g, '""').replace(/\s+/g, " ").trim()}"`;
+  const filas = [];
+  const fila = (o) => filas.push(o);
+  for (const p of productos) {
+    const fotos = (FOTOS[p.id] || []).map((f) => absoluta("/" + f));
+    if (!fotos.length) continue; // Meta exige foto
+    const base = {
+      link: absoluta(urlProducto(p)), image_link: fotos[0], additional_image_link: fotos.slice(1, 11).join(","),
+      availability: "in stock", condition: "new", brand: propio(p) ? "Ingeniero Espuelístico" : "Genérico",
+      google_product_category: "Animals & Pet Supplies > Pet Supplies",
+    };
+    const mayor = textoMayor(p);
+    const por = { "el par": "por par", "la barra": "por barra" }[unidadDe(p)] || "por unidad";
+    const sufijo = { "el par": " (par)", "la barra": " (barra)" }[unidadDe(p)] || "";
+    const extra = [
+      mayor ? `Precio ${por} al detal; ${mayor}.` : "",
+      "Envíos a toda Colombia y al exterior. Pago seguro en ingenieroespuelistico.com o por WhatsApp.",
+    ].filter(Boolean).join(" ");
+    if (p.tipo === "unidad-docena" || p.tipo === "variantes") {
+      for (const v of p.variantes) {
+        const precio = p.tipo === "unidad-docena" ? v.unidad : v.precio;
+        if (!precio) continue;
+        fila({ ...base, id: `${p.id}-${v.id}`, item_group_id: p.id, title: `${p.nombre} – ${v.nombre}${sufijo}`.slice(0, 150),
+          description: `${p.descripcion} ${p.tipo === "unidad-docena" && v.docena ? `Docena: ${pesos(v.docena)}.` : ""} ${extra}`.slice(0, 5000), price: `${Math.round(precio)} COP` });
+      }
+    } else {
+      fila({ ...base, id: p.id, item_group_id: "", title: `${p.nombre}${sufijo}`.slice(0, 150),
+        description: `${p.descripcion} ${extra}`.slice(0, 5000), price: `${Math.round(precioDetal(p))} COP` });
+    }
+  }
+  const cols = ["id", "title", "description", "availability", "condition", "price", "link", "image_link", "additional_image_link", "brand", "google_product_category", "item_group_id"];
+  writeFileSync(join(sitio, "catalogo-meta.csv"), [cols.join(","), ...filas.map((f) => cols.map((c) => csv(f[c])).join(","))].join("\n") + "\n");
+  console.log(`Catálogo de Meta: ${filas.length} artículos en sitio/catalogo-meta.csv`);
+}
