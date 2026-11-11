@@ -240,7 +240,7 @@ ${CABECERA}
         <a class="boton boton--azul" href="/?producto=${encodeURIComponent(p.id)}#catalogo">Comprar en la tienda</a>
         <a class="boton boton--verde-borde" href="https://wa.me/${N.whatsapp}?text=${encodeURIComponent(`Hola, quiero información de: ${p.nombre}`)}" target="_blank" rel="noopener">Preguntar por WhatsApp</a>
       </div>
-      <p class="pp-confianza">Pago seguro con Mercado Pago (PSE, tarjeta, Efecty) o contraentrega en Colombia · Despacho el mismo día si pagas antes de las 4:00 p.m.</p>
+      <p class="pp-confianza">Pago seguro con Mercado Pago (PSE, tarjeta, Efecty${Tienda.CUOTAS_SIN_INTERES > 1 ? `; hasta ${Tienda.CUOTAS_SIN_INTERES} cuotas sin interés con tarjeta de crédito` : ""}) o contraentrega en Colombia · Despacho el mismo día si pagas antes de las 4:00 p.m.</p>
     </div>
   </div>
 
@@ -414,7 +414,7 @@ writeFileSync(join(sitio, "llms.txt"), `# Ingeniero Espuelístico
 - Tienda: ${absoluta("/")}
 - WhatsApp: ${N.telefonoVisible}
 - Horario: ${N.horario}
-- Pagos: Mercado Pago (PSE, tarjeta, Efecty), contraentrega en Colombia; PayPal o Western Union desde el exterior.
+- Pagos: Mercado Pago (PSE, tarjeta, Efecty${Tienda.CUOTAS_SIN_INTERES > 1 ? `, hasta ${Tienda.CUOTAS_SIN_INTERES} cuotas sin interés con tarjeta de crédito` : ""}), contraentrega en Colombia; PayPal o Western Union desde el exterior.
 
 ## Productos
 ${productos.map((p) => { const u = unidadDe(p); const m = textoMayor(p); return `- [${p.nombre}](${absoluta(urlProducto(p))}): ${p.detalle.replace(/\.$/, "")}. ${pesos(precioDetal(p))}${u ? " " + u : ""} al detal${m ? `; ${m}` : ""}.`; }).join("\n")}

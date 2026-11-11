@@ -416,7 +416,7 @@
     if (pais === "Colombia") {
       const habilitada = sub >= NEGOCIO.contraentregaMinimo;
       caja.innerHTML = `<legend>¿Cómo quieres pagar?</legend>
-        <label class="opcion"><input type="radio" name="pago" value="Pago en línea (PSE, tarjeta, Efecty)" checked> Pago en línea: PSE, tarjeta o Efecty</label>
+        <label class="opcion"><input type="radio" name="pago" value="Pago en línea (PSE, tarjeta, Efecty)" checked> Pago en línea: PSE, tarjeta o Efecty${typeof CUOTAS_SIN_INTERES !== "undefined" && CUOTAS_SIN_INTERES > 1 ? ` (hasta ${CUOTAS_SIN_INTERES} cuotas sin interés con tarjeta de crédito)` : ""}</label>
         <label class="opcion" aria-disabled="${!habilitada}"><input type="radio" name="pago" value="Contraentrega" ${habilitada ? "" : "disabled"}> Contraentrega: pagas el envío en línea y los productos al recibir${habilitada ? "" : ` (desde ${pesos(NEGOCIO.contraentregaMinimo)})`}</label>`;
     } else {
       caja.innerHTML = `<legend>¿Cómo quieres pagar?</legend>
@@ -807,6 +807,7 @@
   function pintarDatos() {
     const datos = {
       caja: pesos(AJUSTE_EMPAQUE.caja), granel: pesos(Math.abs(AJUSTE_EMPAQUE.granel)), contraentrega: pesosCOP(CONTRAENTREGA_MINIMO),
+      cuotas: CUOTAS_SIN_INTERES > 1 ? `hasta ${CUOTAS_SIN_INTERES} cuotas sin interés` : "pago de contado",
       "envio-base": `USD ${ENVIO_INTERNACIONAL_USD.base}`, "envio-extra": `USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra}`, "envio-ecuador": ENVIO_INTERNACIONAL_USD.ecuador,
     };
     $$("[data-dato]").forEach((el) => { if (datos[el.dataset.dato] !== undefined) el.textContent = datos[el.dataset.dato]; });

@@ -53,6 +53,11 @@ const AJUSTE_EMPAQUE = { bolsa: 0, caja: 300, granel: -200 };
 /* ---------- CONTRAENTREGA: compra mínima en pesos para habilitarla ---------- */
 const CONTRAENTREGA_MINIMO = 45000;
 
+/* ---------- CUOTAS SIN INTERÉS (tarjeta de crédito, en Mercado Pago) ----------
+   Debe coincidir con lo que tengas activado en tu cuenta de Mercado Pago (Cuotas sin interés).
+   La página lo anuncia en el carrito, en las fichas y en las preguntas frecuentes. 0 = no se anuncia. */
+const CUOTAS_SIN_INTERES = 3;
+
 /* ---------- ENVÍO INTERNACIONAL (esta parte sí va en DÓLARES) ---------- */
 // ENVÍO PROPIO (Panamá y Costa Rica): base + valor por cada medio kilo adicional después del primer kilo.
 // paisesConTarifa: países donde se ofrece el envío propio (códigos de 2 letras).

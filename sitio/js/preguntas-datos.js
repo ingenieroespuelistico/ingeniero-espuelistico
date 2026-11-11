@@ -26,7 +26,7 @@ const PREGUNTAS = [
   },
   {
     pregunta: "¿Cómo puedo pagar?",
-    respuesta: "En Colombia, en línea con PSE, tarjeta o Efecty a través de Mercado Pago, o contraentrega. Desde otros países, por PayPal o Western Union.",
+    respuesta: `En Colombia, en línea con PSE, tarjeta o Efecty a través de Mercado Pago${CUOTAS_SIN_INTERES > 1 ? ` (con tarjeta de crédito, hasta ${CUOTAS_SIN_INTERES} cuotas sin interés)` : ""}, o contraentrega. Desde otros países, por PayPal o Western Union.`,
   },
   {
     pregunta: "¿Envían a otros países?",

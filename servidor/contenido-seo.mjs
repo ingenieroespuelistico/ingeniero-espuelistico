@@ -95,7 +95,7 @@ export function paginasSEO(T, h) {
     <ul>
       <li><strong>Despacho:</strong> ${comunes.despacho}</li>
       <li><strong>Envío en Colombia:</strong> con Interrapidísimo. La tienda calcula el valor exacto según tu municipio y el peso del paquete antes de pagar.</li>
-      <li><strong>Pago:</strong> PSE, tarjeta o Efecty con Mercado Pago, o contraentrega desde ${pesos(T.CONTRAENTREGA_MINIMO)} (pagas el envío en línea y los productos al recibir). Para pedidos por WhatsApp también recibimos transferencia.</li>
+      <li><strong>Pago:</strong> PSE, tarjeta o Efecty con Mercado Pago${T.CUOTAS_SIN_INTERES > 1 ? ` (hasta ${T.CUOTAS_SIN_INTERES} cuotas sin interés con tarjeta de crédito)` : ""}, o contraentrega desde ${pesos(T.CONTRAENTREGA_MINIMO)} (pagas el envío en línea y los productos al recibir). Para pedidos por WhatsApp también recibimos transferencia.</li>
       <li><strong>Otros países:</strong> DHL Express, con el valor exacto calculado en la tienda según tu ciudad${conTarifa.length ? `; a ${conTarifa.join(" y ")} también hay envío propio por USD ${I.base} hasta 1 kg y USD ${I.porMedioKiloExtra} por cada medio kilo adicional` : ""}. Pagas con PayPal en la tienda o por Western Union. Más detalles en <a href="/envios-internacionales">envíos internacionales</a>.</li>
     </ul>
   </section>`,
