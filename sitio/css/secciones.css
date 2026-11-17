@@ -447,6 +447,12 @@ input, select, textarea { background-color: #fff; color: #142033; }
 .guia h1 { margin: 8px 0 6px; }
 .guia__autor { color: var(--tinta-suave); font-size: .9rem; margin: 0 0 14px; }
 .guia__entrada { font-size: 1.08rem; line-height: 1.6; max-width: 760px; }
+.catalogo-lista { list-style: none; padding: 0; margin: 24px 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+.catalogo-lista__item a { display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 12px; border: 1px solid rgba(127,127,127,.25); border-radius: 14px; color: inherit; text-decoration: none; }
+.catalogo-lista__item a:hover { border-color: currentColor; }
+.catalogo-lista__item img { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
+.catalogo-lista__item span { font-size: .92rem; opacity: .8; }
+.catalogo-lista__item .catalogo-lista__precio { opacity: 1; font-weight: 700; }
 .guia .pp-seccion p, .guia .pp-seccion li { max-width: 760px; }
 .guia .pp-seccion ol, .guia .pp-seccion ul:not(.pp-relacionados) { padding-left: 22px; display: grid; gap: 6px; }
 .pp-tabla--comparar td, .pp-tabla--comparar th { font-size: .92rem; }

@@ -4,7 +4,7 @@
 // Lenguaje neutral a propósito: hablamos de productos, medidas, materiales y compras, no de la actividad.
 
 export function paginasSEO(T, h) {
-  const { esc, pesos, urlProducto } = h;
+  const { esc, pesos, urlProducto, precioDetal, unidadDe } = h;
   const C = T.Calculo, N = T.NEGOCIO;
   const prod = (id) => T.PRODUCTOS.find((p) => p.id === id);
   const enlace = (id, texto) => { const p = prod(id); return p && !p.sinPrecio ? `<a href="${urlProducto(p)}">${esc(texto || p.nombre)}</a>` : esc(texto || id); };
@@ -58,7 +58,68 @@ export function paginasSEO(T, h) {
     despacho: `De lunes a viernes, si pagas antes de las 4:00 p.m. el pedido sale el mismo día; los sábados, antes de las 10:00 a.m. Los pedidos desde 300 pares salen en 1 a 3 días hábiles.`,
   };
 
+  const dir = N.direccion || {};
+  const direccionTexto = [dir.calle, dir.ciudad, dir.departamento].filter(Boolean).join(", ");
+  const mapa = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${direccionTexto}, Colombia`)}`;
+  const visibles = T.PRODUCTOS.filter((p) => !p.sinPrecio);
+
   return [
+    /* ------------------------------------------------------------------ */
+    {
+      ruta: "/catalogo", tipo: "landing",
+      titulo: "Catálogo de espuelas y accesorios para gallos | Ingeniero Espuelístico",
+      descripcion: `Las ${visibles.length} referencias de la fábrica: espuelas acrílicas, negras reforzadas y enterizas, patapioja sintética y metálica, cera y esparadrapo. Precios al detal y por mayor.`,
+      h1: "Catálogo de espuelas y accesorios para gallos",
+      miga: "Catálogo",
+      cuerpo: `
+  <p class="guia__entrada">Todo lo que fabricamos y vendemos en Ibagué, con precio al detal. En cada producto ves sus fotos, medidas, presentaciones y el precio por mayor.</p>
+  <ul class="catalogo-lista">${visibles.map((p) => `
+    <li class="catalogo-lista__item"><a href="${urlProducto(p)}">
+      <img src="/fotos/${esc(p.id)}/1.jpg" alt="${esc(p.nombre)}" width="300" height="300" loading="lazy">
+      <strong>${esc(p.nombre)}</strong>
+      <span>${esc(p.detalle || "")}</span>
+      <span class="catalogo-lista__precio">Desde ${pesos(precioDetal(p))}${unidadDe(p) ? " " + unidadDe(p) : ""}</span>
+    </a></li>`).join("")}
+  </ul>
+  <p>¿Compras por cantidad? Mira los <a href="/espuelas-por-mayor">precios por mayor</a> o <a href="/contacto">escríbenos</a>.</p>`,
+      preguntas: [
+        { pregunta: "¿Puedo mezclar referencias y medidas para el precio por mayor?", respuesta: "Sí. El precio por par baja según el total de pares de espuela del pedido, aunque mezcles referencias y medidas." },
+        { pregunta: "¿Cómo compro?", respuesta: "Agrega los productos al pedido en la tienda y paga ahí mismo, o completa el pedido por WhatsApp." },
+      ],
+    },
+
+    /* ------------------------------------------------------------------ */
+    {
+      ruta: "/contacto", tipo: "landing",
+      titulo: "Contacto y ubicación | Ingeniero Espuelístico (Ibagué)",
+      descripcion: `Fábrica de espuelas para gallos en ${dir.ciudad || "Ibagué"}, ${dir.departamento || "Tolima"}. WhatsApp ${N.telefonoVisible}, horario de atención, agenda de llamadas y correo.`,
+      h1: "Contacto y ubicación",
+      miga: "Contacto",
+      cuerpo: `
+  <p class="guia__entrada">Atendemos por WhatsApp, por llamada agendada y en el taller con cita previa. Respondemos en el horario de atención (hora de Colombia).</p>
+  <section class="pp-seccion"><h2>Datos de contacto</h2>
+    <ul>
+      <li><strong>WhatsApp y teléfono:</strong> <a href="${wa("Hola, quiero información de las espuelas")}" target="_blank" rel="noopener">${esc(N.telefonoVisible)}</a></li>
+      <li><strong>Correo:</strong> <a href="mailto:${esc(N.correo)}">${esc(N.correo)}</a></li>
+      <li><strong>Horario de atención:</strong> ${esc(N.horario)}</li>
+      <li><strong>Taller:</strong> ${esc(direccionTexto)} (<a href="${mapa}" target="_blank" rel="noopener">ver en el mapa</a>). Visitas solo con cita.</li>
+    </ul>
+  </section>
+  <section class="pp-seccion"><h2>Agenda una llamada</h2>
+    <p>Elige el día y la hora en la <a href="/#agendar">agenda de la tienda</a> y te llamamos. Cada llamada dura ${T.AGENDA ? T.AGENDA.duracionMinutos : 15} minutos.</p>
+  </section>
+  <section class="pp-seccion"><h2>Redes</h2>
+    <ul>${[["TikTok", N.tiktok], ["Facebook", N.facebook]].filter((x) => x[1]).map(([n, u]) => `<li><a href="${esc(u)}" target="_blank" rel="noopener">${n}</a></li>`).join("")}</ul>
+  </section>
+  <section class="pp-seccion"><h2>Peticiones, quejas y reclamos</h2>
+    <p>Radica tu PQR en <a href="/pqr">ingenieroespuelistico.com/pqr</a> y recibe un número para hacerle seguimiento.</p>
+  </section>`,
+      preguntas: [
+        { pregunta: "¿Puedo visitar el taller?", respuesta: "Sí, con cita previa acordada por WhatsApp." },
+        { pregunta: "¿Cuál es el horario de atención?", respuesta: `${N.horario}, hora de Colombia.` },
+      ],
+    },
+
     /* ------------------------------------------------------------------ */
     {
       ruta: "/espuelas-por-mayor", tipo: "landing",

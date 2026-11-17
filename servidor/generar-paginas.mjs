@@ -123,7 +123,7 @@ const FUENTE = `<link rel="preload" href="/fuentes/archivo.woff2" as="font" type
 const CABECERA = `<header class="cabecera">
   <div class="contenedor cabecera__fila">
     <a class="marca" href="/"><span class="marca__nombre">Ingeniero<br>Espuelístico</span></a>
-    <nav class="pp-nav" aria-label="Principal"><a href="/#catalogo">Catálogo</a><a href="/espuelas-por-mayor">Por mayor</a><a href="/guias/medidas-de-espuelas">Medidas</a><a href="/#preguntas">Preguntas</a></nav>
+    <nav class="pp-nav" aria-label="Principal"><a href="/catalogo">Catálogo</a><a href="/espuelas-por-mayor">Por mayor</a><a href="/guias/medidas-de-espuelas">Medidas</a><a href="/#preguntas">Preguntas</a><a href="/contacto">Contacto</a></nav>
   </div>
 </header>`;
 function enlacesProductos(actual) {
@@ -131,7 +131,7 @@ function enlacesProductos(actual) {
     `<li><a href="${urlProducto(p)}">${esc(p.nombre)}</a></li>`).join("");
 }
 // Enlaces a las guías (pie de todas las páginas)
-const GUIAS_ENLACES = [["/espuelas-por-mayor", "Espuelas por mayor"], ["/guias/medidas-de-espuelas", "Medidas de espuelas"], ["/guias/espuela-con-casquillo-o-enteriza", "Casquillo o enteriza"], ["/accesorios-para-gallos", "Accesorios para gallos"], ["/envios-internacionales", "Envíos internacionales"]];
+const GUIAS_ENLACES = [["/catalogo", "Catálogo completo"], ["/contacto", "Contacto y ubicación"], ["/espuelas-por-mayor", "Espuelas por mayor"], ["/guias/medidas-de-espuelas", "Medidas de espuelas"], ["/guias/espuela-con-casquillo-o-enteriza", "Casquillo o enteriza"], ["/accesorios-para-gallos", "Accesorios para gallos"], ["/envios-internacionales", "Envíos internacionales"]];
 const GUIAS_PIE = `<ul class="pie__lista">${GUIAS_ENLACES.map(([r, t]) => `<li><a href="${r}">${t}</a></li>`).join("")}</ul>`;
 const CREDITO = `<p class="pie__credito">Página hecha por <strong>DSCH Marketing</strong> en convenio con Ingeniero Espuelístico. Si desea que impulsemos su negocio, escriba al Ingeniero Espuelístico y con gusto lo redirigirán a nosotros.</p>`;
 function pie() {
@@ -221,7 +221,7 @@ ${imagenes[0] ? `<meta property="og:image" content="${imagenes[0]}">` : ""}
 <link rel="icon" href="/icono.svg" type="image/svg+xml">
 ${FUENTE}
 <link rel="stylesheet" href="/css/estilos.css?v=18">
-<link rel="stylesheet" href="/css/secciones.css?v=16">
+<link rel="stylesheet" href="/css/secciones.css?v=17">
 ${ld(datosProducto)}
 ${ld(migas)}
 <script defer src="https://cloud.umami.is/script.js" data-website-id="e0426d1c-3139-4245-97ad-1efe7a9bae49" data-domains="ingenieroespuelistico.com"></script>
@@ -261,7 +261,7 @@ ${pie()}
 }
 
 /* ---------- 4b. Guías y páginas de compra (contenido para Google y asistentes de IA) ---------- */
-const PAGINAS_SEO = paginasSEO(Tienda, { esc, pesos, urlProducto });
+const PAGINAS_SEO = paginasSEO(Tienda, { esc, pesos, urlProducto, precioDetal, unidadDe });
 const dirGuias = join(sitio, "guias");
 if (existsSync(dirGuias)) rmSync(dirGuias, { recursive: true });
 mkdirSync(dirGuias);
@@ -298,7 +298,7 @@ for (const g of PAGINAS_SEO) {
 <link rel="icon" href="/icono.svg" type="image/svg+xml">
 ${FUENTE}
 <link rel="stylesheet" href="/css/estilos.css?v=18">
-<link rel="stylesheet" href="/css/secciones.css?v=16">
+<link rel="stylesheet" href="/css/secciones.css?v=17">
 ${datos.map(ld).join("\n")}
 <script defer src="https://cloud.umami.is/script.js" data-website-id="e0426d1c-3139-4245-97ad-1efe7a9bae49" data-domains="ingenieroespuelistico.com"></script>
 </head>
@@ -349,7 +349,7 @@ const tienda = {
   // Sin catálogo de productos aquí: Google tomaba cada producto de la lista como una ficha incompleta (sin precio)
   // y marcaba "Fragmentos de productos: elementos no válidos". Cada producto tiene sus datos completos en su página.
 };
-const web = { "@context": "https://schema.org", "@type": "WebSite", name: "Ingeniero Espuelístico", url: absoluta("/"), inLanguage: "es-CO" };
+const web = { "@context": "https://schema.org", "@type": "WebSite", name: "Ingeniero Espuelístico", alternateName: ["Ingeniero Espuelistico", "ingenieroespuelistico.com"], url: absoluta("/"), inLanguage: "es-CO" };
 const faq = {
   "@context": "https://schema.org", "@type": "FAQPage",
   mainEntity: Tienda.PREGUNTAS.map((q) => ({ "@type": "Question", name: q.pregunta, acceptedAnswer: { "@type": "Answer", text: q.respuesta } })),
