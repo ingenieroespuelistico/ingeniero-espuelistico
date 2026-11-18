@@ -383,7 +383,7 @@
     const dhl = ENVIO_INTERNACIONAL_USD.dhl && ENVIO_INTERNACIONAL_USD.dhl.activo;
     if (C.tieneTarifaInternacional(isoPedido())) {
       const usd = C.envioInternacionalUSD(pedido);
-      return { texto: `Envío a ${pais}: envío propio puerta a puerta por USD ${usd}${dhl ? " o DHL Express. Elige tu ciudad para ver el valor de DHL y escoge el que prefieras" : ""} (peso estimado ${kg.toFixed(2)} kg).`, usd };
+      return { texto: `Envío a ${pais}: envío propio puerta a puerta por USD ${usd}${dhl ? " o DHL Express. Elige tu ciudad para ver el valor de DHL y escoge el que prefieras" : ""} (peso estimado ${kg.toFixed(2)} kg). El envío propio es un valor máximo: si sale menor, te devolvemos la diferencia o te la abonamos.`, usd };
     }
     if (dhl) return { texto: `Envío a ${pais} con DHL Express: elige tu ciudad y calculamos el valor exacto (peso estimado ${kg.toFixed(2)} kg).` };
     if (regla) return { texto: `Envío a ${pais}: ${regla.texto}. Te confirmamos el valor exacto por WhatsApp.` };
@@ -650,7 +650,7 @@
       irAPagar(d, cel.numeroE164, texto);
       return;
     }
-    // Otros países: PayPal directo, en dólares, con el envío elegido (propio en Panamá y Costa Rica, o DHL)
+    // Otros países: PayPal directo, en dólares, con el envío elegido (propio en Panamá, Costa Rica y Venezuela, o DHL)
     if (!esColombia() && d.pago === "PayPal" && paypalDirecto()) {
       if (!envioElegido()) return fallar(cotizacion.estado === "cargando" ? "Estamos calculando el envío, espera un momento." : "Elige tu ciudad para calcular el envío.", $("#campo-ciudad"));
       irAPaypal(d, cel.numeroE164, texto);
@@ -796,7 +796,7 @@
     }
   }
   if (typeof PAYPAL !== "undefined" && PAYPAL.activo && $("#aviso-pago")) {
-    $("#aviso-pago").textContent = "En Colombia pagas aquí mismo con Mercado Pago. Desde otros países pagas aquí mismo con PayPal, en dólares, con envío por DHL Express (en Panamá y Costa Rica también puedes elegir nuestro envío propio). Si prefieres Western Union, te enviamos los datos por WhatsApp.";
+    $("#aviso-pago").textContent = "En Colombia pagas aquí mismo con Mercado Pago. Desde otros países pagas aquí mismo con PayPal, en dólares, con envío por DHL Express (en Panamá, Costa Rica y Venezuela también puedes elegir nuestro envío propio). Si prefieres Western Union, te enviamos los datos por WhatsApp.";
   }
   // Si el cliente vuelve con "Atrás" desde Mercado Pago, el botón no queda bloqueado
   addEventListener("pageshow", (e) => { if (e.persisted) { $("#boton-confirmar").disabled = Boolean(paisSinEnvio()); textoConfirmar(); } });
@@ -808,7 +808,7 @@
     const datos = {
       caja: pesos(AJUSTE_EMPAQUE.caja), granel: pesos(Math.abs(AJUSTE_EMPAQUE.granel)), contraentrega: pesosCOP(CONTRAENTREGA_MINIMO),
       cuotas: CUOTAS_SIN_INTERES > 1 ? `hasta ${CUOTAS_SIN_INTERES} cuotas sin interés` : "pago de contado",
-      "envio-base": `USD ${ENVIO_INTERNACIONAL_USD.base}`, "envio-extra": `USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra}`, "envio-ecuador": ENVIO_INTERNACIONAL_USD.ecuador,
+      "envio-base": `USD ${ENVIO_INTERNACIONAL_USD.base}`, "envio-extra": `USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra}`,
     };
     $$("[data-dato]").forEach((el) => { if (datos[el.dataset.dato] !== undefined) el.textContent = datos[el.dataset.dato]; });
   }

@@ -18,6 +18,7 @@ export function paginasSEO(T, h) {
   const sinEnvio = Object.values(N.paisesSinEnvio || {});
   const nombrePais = (iso) => { try { return new Intl.DisplayNames(["es"], { type: "region" }).of(iso); } catch { return iso; } };
   const conTarifa = (I.paisesConTarifa || []).map(nombrePais);
+  const lista = (a) => { try { return new Intl.ListFormat("es", { type: "conjunction" }).format(a); } catch { return a.join(", "); } };
 
   // Ejemplo de pedido por mayor calculado con la misma fórmula de la tienda
   const ej = [{ producto: "acrilica", cantidad: 300, medida: 40, presentacion: "bolsa" }, { producto: "negra-casquillo", cantidad: 200, medida: 38, presentacion: "bolsa" }];
@@ -157,7 +158,7 @@ export function paginasSEO(T, h) {
       <li><strong>Despacho:</strong> ${comunes.despacho}</li>
       <li><strong>Envío en Colombia:</strong> con Interrapidísimo. La tienda calcula el valor exacto según tu municipio y el peso del paquete antes de pagar.</li>
       <li><strong>Pago:</strong> PSE, tarjeta o Efecty con Mercado Pago${T.CUOTAS_SIN_INTERES > 1 ? ` (hasta ${T.CUOTAS_SIN_INTERES} cuotas sin interés con tarjeta de crédito)` : ""}, o contraentrega desde ${pesos(T.CONTRAENTREGA_MINIMO)} (pagas el envío en línea y los productos al recibir). Para pedidos por WhatsApp también recibimos transferencia.</li>
-      <li><strong>Otros países:</strong> DHL Express, con el valor exacto calculado en la tienda según tu ciudad${conTarifa.length ? `; a ${conTarifa.join(" y ")} también hay envío propio por USD ${I.base} hasta 1 kg y USD ${I.porMedioKiloExtra} por cada medio kilo adicional` : ""}. Pagas con PayPal en la tienda o por Western Union. Más detalles en <a href="/envios-internacionales">envíos internacionales</a>.</li>
+      <li><strong>Otros países:</strong> DHL Express, con el valor exacto calculado en la tienda según tu ciudad${conTarifa.length ? `; a ${lista(conTarifa)} también hay envío propio por USD ${I.base} hasta 1 kg y USD ${I.porMedioKiloExtra} por cada medio kilo adicional (valor máximo: si sale menor, te devolvemos la diferencia o te la abonamos)` : ""}. Pagas con PayPal en la tienda o por Western Union. Más detalles en <a href="/envios-internacionales">envíos internacionales</a>.</li>
     </ul>
   </section>`,
       preguntas: [
@@ -307,7 +308,7 @@ export function paginasSEO(T, h) {
   <section class="pp-seccion"><h2>Costo del envío por país</h2>
     <ul>
       <li><strong>Todos los países a los que enviamos:</strong> DHL Express, con número de guía para rastrear. La tienda consulta la tarifa de DHL en el momento, con tu ciudad y el peso del pedido, y te muestra el valor exacto antes de pagar.</li>
-      ${conTarifa.length ? `<li><strong>${conTarifa.join(" y ")}:</strong> además de DHL, puedes elegir nuestro envío propio por USD ${I.base} hasta 1 kg, más USD ${I.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. Por ejemplo, 24 pares de espuela con casquillo pesan unos ${(C.pesoGramos([{ producto: "acrilica", cantidad: 24, medida: 40, presentacion: "bolsa" }]) / 1000).toFixed(2).replace(".", ",")} kg y pagan la tarifa base.</li>` : ""}
+      ${conTarifa.length ? `<li><strong>${lista(conTarifa)}:</strong> además de DHL, puedes elegir nuestro envío propio por USD ${I.base} hasta 1 kg, más USD ${I.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. Es un valor máximo: si el envío sale más barato, te devolvemos la diferencia o te la abonamos para llevar más producto. Por ejemplo, 24 pares de espuela con casquillo pesan unos ${(C.pesoGramos([{ producto: "acrilica", cantidad: 24, medida: 40, presentacion: "bolsa" }]) / 1000).toFixed(2).replace(".", ",")} kg y pagan la tarifa base.</li>` : ""}
     </ul>
     ${sinEnvio.length ? `<p class="documento__resumen"><strong>No enviamos</strong> a Estados Unidos (incluidos Puerto Rico y sus demás territorios) ni a Canadá, porque sus leyes prohíben o restringen la importación de estos productos.</p>` : ""}
   </section>
@@ -315,7 +316,7 @@ export function paginasSEO(T, h) {
   <section class="pp-seccion"><h2>Cómo comprar desde otro país</h2>
     <ol>
       <li>Arma tu pedido en la <a href="/#catalogo">tienda</a> y elige tu país en los datos de envío.</li>
-      <li>Escribe tu ciudad (y tu código postal, si tu país lo usa): la tienda calcula el envío por DHL${conTarifa.length ? ` y, en ${conTarifa.join(" y ")}, te deja elegir entre DHL y nuestro envío propio` : ""}.</li>
+      <li>Escribe tu ciudad (y tu código postal, si tu país lo usa): la tienda calcula el envío por DHL${conTarifa.length ? ` y, en ${lista(conTarifa)}, te deja elegir entre DHL y nuestro envío propio` : ""}.</li>
       <li>Pagas con PayPal ahí mismo, en dólares, con tu cuenta PayPal o con tarjeta. Si prefieres Western Union, te enviamos los datos por WhatsApp.</li>
       <li>Despachamos y te enviamos el número de guía para seguir el paquete.</li>
     </ol>
@@ -329,7 +330,7 @@ export function paginasSEO(T, h) {
     <p>El valor del envío no incluye aranceles, impuestos ni trámites de importación del país de destino: si aplican, los paga quien recibe, directamente a DHL o a la aduana. Antes de pagar, verifica que tu país permita importar estos productos.</p>
   </section>`,
       preguntas: [
-        { pregunta: "¿Cómo pago desde otro país?", respuesta: "Con PayPal, en dólares, ahí mismo en la tienda: el total ya incluye el envío por DHL (o el envío propio en Panamá y Costa Rica). También puedes pagar por Western Union; te enviamos los datos por WhatsApp." },
+        { pregunta: "¿Cómo pago desde otro país?", respuesta: `Con PayPal, en dólares, ahí mismo en la tienda: el total ya incluye el envío por DHL (o el envío propio en ${lista(conTarifa)}). También puedes pagar por Western Union; te enviamos los datos por WhatsApp.` },
         { pregunta: "¿Cuánto cuesta el envío por DHL?", respuesta: "Depende de tu ciudad y del peso del pedido. La tienda consulta la tarifa de DHL en el momento y te muestra el valor exacto en dólares antes de pagar." },
         { pregunta: "¿Puedo ver los precios en mi moneda?", respuesta: "Sí. En la tienda eliges tu país y ves los precios aproximados en tu moneda con la tasa del día. El cobro se hace en pesos colombianos o en dólares." },
         { pregunta: "¿Envían a Estados Unidos o Puerto Rico?", respuesta: "No. Las leyes de Estados Unidos, que también aplican en Puerto Rico y sus demás territorios, y las de Canadá prohíben o restringen la importación de estos productos." },
