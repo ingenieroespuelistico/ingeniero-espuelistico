@@ -10,6 +10,7 @@
 //   POST /api/paypal/capturar  → cuando el cliente vuelve de PayPal: cobra la orden y avisa por Telegram
 //   /api/admin/...         → datos de la app de pedidos (sitio/admin/), con clave ADMIN_CLAVE
 //   GET  /api/agenda       → horas ocupadas en Google Calendar (si está conectado)
+//   POST /api/whatsapp     → avisos de Zernio: el agente de WhatsApp (ver servidor/agente.js). Apagado con AGENTE_ACTIVO vacío
 //   POST /api/pqr          → radica una petición, queja o reclamo (con número, fecha y hora); GET consulta su estado
 //   POST /api/agenda       → agenda una llamada: evento en Google Calendar + aviso por Telegram
 //   Tarea programada diaria (7:00 a. m. de Colombia) → resumen de pedidos por Telegram
@@ -22,9 +23,15 @@ import { atenderAdmin, resumenDiario } from "./admin.js";
 import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario.js";
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
+import { atenderWhatsApp, conectarAgente, modoAgente, ConversacionWA } from "./agente.js";
 
-const VERSION = "2026-10-25.7";
+const VERSION = "2026-11-18.1";
 const C = Tienda.Calculo;
+
+// Agente de WhatsApp: la "memoria" de cada chat (Durable Object) se exporta aquí y usa las mismas
+// funciones de la tienda para cotizar (precios, Interrapidísimo, DHL) y para avisar por Telegram.
+export { ConversacionWA };
+conectarAgente({ Tienda, fleteColombia, fleteDHL, tasaDolar, telegram });
 
 const CABECERAS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -66,6 +73,7 @@ export default {
     const ruta = url.pathname;
     try {
       if (ruta === "/api/salud") return salud(url, env);
+      if (ruta === "/api/whatsapp") return await atenderWhatsApp(request, env);
       if (ruta === "/api/mp-webhook") return await webhookMercadoPago(request, url, env, ctx);
       if (ruta === "/api/estado" && request.method === "GET") {
         if (!(await dentroDelLimite(request, env, ruta))) return error("Demasiadas solicitudes", 429);
@@ -198,15 +206,16 @@ function cajaPara(gramos) {
   return cajas.find((c) => gramos <= c.hastaGramos) || cajas[cajas.length - 1];
 }
 
-async function fleteColombia({ lineas, departamento, ciudad, destinatario, contraentrega }, env) {
+async function fleteColombia({ lineas, departamento, ciudad, destinatario, contraentrega, servicio }, env) {
   const dane = await codigoDANE(departamento, ciudad);
   if (!dane) return { ok: false, error: "No encontramos tu municipio en la transportadora. Escríbenos por WhatsApp y te cotizamos." };
   const gramos = C.pesoGramos(lineas);
   const valor = C.subtotal(lineas);
   const caja = cajaPara(gramos);
   const kg = Math.max(0.1, Math.ceil(gramos / 100) / 10);
-  const clave = `flete2:${dane.city}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${contraentrega ? "cod" + Math.round(valor) : Math.ceil(valor / 50000)}`;
   const cfg = Tienda.ENVIO_NACIONAL;
+  const servicioPedido = servicio || cfg.servicio; // "mensajeria_do" = recoger en oficina (lo usa el agente)
+  const clave = `flete2:${dane.city}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${contraentrega ? "cod" + Math.round(valor) : Math.ceil(valor / 50000)}${servicioPedido !== cfg.servicio ? ":" + servicioPedido : ""}`;
 
   const mejor = await enCache(clave, 1800, async () => {
     const destino = {
@@ -227,7 +236,7 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario, contr
     });
     const d = await r.json().catch(() => null);
     if (!r.ok || !d || !Array.isArray(d.data)) { console.log("Envia sin tarifa", r.status, JSON.stringify(d).slice(0, 300)); return null; }
-    const t = d.data.find((x) => x.service === cfg.servicio) || d.data[0];
+    const t = d.data.find((x) => x.service === servicioPedido) || d.data[0];
     if (!t || !(Number(t.totalPrice) > 0)) return null;
     const recaudo = contraentrega ? Number(t.cashOnDeliveryCommission || 0) : 0;
     return {
@@ -887,10 +896,10 @@ async function humanoVerificado(request, env, token) {
 
 /* ---------------- Salud ---------------- */
 async function salud(url, env) {
-  const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TURNSTILE_SECRET", "PAYPAL_CLIENT_ID", "PAYPAL_SECRET", "ADMIN_CLAVE", "GOOGLE_CUENTA_SERVICIO", "RESEND_API_KEY", "CORREO_REMITENTE"];
+  const nombres = ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "ENVIA_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TURNSTILE_SECRET", "PAYPAL_CLIENT_ID", "PAYPAL_SECRET", "ADMIN_CLAVE", "GOOGLE_CUENTA_SERVICIO", "RESEND_API_KEY", "CORREO_REMITENTE", "ZERNIO_API_KEY", "ZERNIO_WEBHOOK_SECRET", "ANTHROPIC_API_KEY", "PAGO_NEQUI"];
   // Sin la clave privada (SALUD_CLAVE) solo se muestra que está en línea
   if (!env.SALUD_CLAVE || url.searchParams.get("clave") !== env.SALUD_CLAVE) return json({ ok: true, version: VERSION });
-  const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, base: Boolean(env.PEDIDOS), secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])) };
+  const respuesta = { ok: true, version: VERSION, productos: Tienda.PRODUCTOS.length, base: Boolean(env.PEDIDOS), secretos: Object.fromEntries(nombres.map((n) => [n, Boolean(env[n])])), agenteWhatsApp: modoAgente(env) };
   if (url.searchParams.get("revisar") === "1") respuesta.conexiones = await revisarConexiones(env);
   return json(respuesta);
 }

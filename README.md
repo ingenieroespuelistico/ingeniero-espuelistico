@@ -13,3 +13,10 @@ Página de venta de espuelas, patapiojas, cera y esparadrapo, fabricados en Ibag
 
 ## Publicación
 Cloudflare (Worker con archivos estáticos, ver `wrangler.jsonc`) publica la carpeta `sitio/` y el servidor `servidor/index.js`. Las cabeceras de seguridad están en `sitio/_headers`.
+
+## Agente de WhatsApp
+- `servidor/agente.js` — recibe los avisos de Zernio en `POST /api/whatsapp`, responde con el modelo y cotiza con las mismas funciones de la tienda. Una "memoria" por chat (Durable Object `ConversacionWA`).
+- `servidor/agente-conocimiento.js` — tono, recorrido de venta y reglas (sale del análisis de 596 chats reales). Los precios NO van ahí: se leen de `sitio/js/precios.js`.
+- Encendido: variable `AGENTE_ACTIVO` en Cloudflare (`no` / `prueba` / `si`). Ver el encabezado de `servidor/agente.js`.
+- Pruebas sin internet: `node servidor/generar-catalogo.mjs && node pruebas/agente.prueba.mjs`.
+- **Nunca** subir chats de clientes a este repositorio: es público.

@@ -1,0 +1,486 @@
+// Agente de WhatsApp (pasada 1). Recibe los avisos (webhooks) de Zernio en POST /api/whatsapp.
+//
+// CÓMO FUNCIONA
+//   1. El webhook verifica la firma de Zernio, descarta avisos repetidos y entrega el evento a la
+//      "memoria" de esa conversación (un Durable Object: uno por chat).
+//   2. Cada mensaje del cliente reinicia una alarma de unos segundos: así se juntan los mensajes
+//      seguidos y se responde una sola vez. Nunca salen dos respuestas a la vez en el mismo chat.
+//   3. Al sonar la alarma: lee el historial en Zernio, transcribe audios, consulta al modelo
+//      (que cotiza con las mismas funciones de la tienda) y responde por Zernio.
+//   4. Si Alexander escribe en el chat (desde el celular o el inbox), el agente se calla 12 horas.
+//
+// INTERRUPTOR (Cloudflare → Worker → Settings → Variables and Secrets):
+//   AGENTE_ACTIVO          "no" o vacío = apagado · "prueba" = solo responde a AGENTE_NUMEROS_PRUEBA · "si" = encendido
+//   AGENTE_NUMEROS_PRUEBA  números con indicativo, separados por coma (ej. 573001234567)
+//   AGENTE_EXCLUIDOS       ids de conversación de Zernio donde nunca responde, separados por coma
+// SECRETOS: ZERNIO_API_KEY, ZERNIO_WEBHOOK_SECRET, ANTHROPIC_API_KEY, PAGO_NEQUI (texto con los datos de Nequi)
+// OPCIONALES: ANTHROPIC_MODEL (por defecto MODELO_DEFECTO), ZERNIO_ACCOUNT_ID (si el aviso no trae la cuenta)
+
+import { CONOCIMIENTO } from "./agente-conocimiento.js";
+
+const ZERNIO = "https://zernio.com/api/v1";
+const ANTHROPIC = "https://api.anthropic.com/v1/messages";
+const MODELO_DEFECTO = "claude-sonnet-5-5";
+const MODELO_VOZ = "@cf/openai/whisper-large-v3-turbo";
+const ESPERA_MS = 7000;             // espera para juntar mensajes seguidos del cliente
+const HUMANO_HORAS = 12;            // tras escribir Alexander (o tras ceder), el agente calla
+const MAX_RONDAS = 4;               // vueltas de herramientas por respuesta
+const MAX_FOTOS = 4;
+const MAX_RESPUESTAS_HORA = 20;     // freno de gasto por chat
+const HISTORIAL = 30;               // mensajes de contexto
+const DIA = 86400;
+
+let H = null; // herramientas de la tienda (Tienda, fleteColombia, fleteDHL, tasaDolar, telegram), las conecta index.js
+export function conectarAgente(herramientas) { H = herramientas; }
+
+/* ---------------- utilidades ---------------- */
+const ok = (t = "ok", s = 200) => new Response(t, { status: s });
+const digitos = (s) => String(s || "").replace(/\D/g, "");
+// Listas separadas por coma, punto y coma o salto de línea (los números pueden llevar espacios, guiones o +)
+const lista = (v) => String(v || "").split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const textoDe = (m) => String((m && (m.text ?? m.message)) || "").trim();
+const tiempoDe = (m) => Date.parse((m && (m.sentAt || m.createdAt)) || "") || 0;
+const fuenteDe = (m) => (m && (m.source || (m.metadata || {}).source)) || "";
+const pesos = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-CO");
+const horaCO = (ms) => new Date(ms - 5 * 3600e3).toISOString().slice(0, 16).replace("T", " ");
+// Mensajes automáticos o vacíos (bienvenida, ausencia, no soportados) no cuentan como "Alexander escribió"
+const esAutomatico = (m) => !textoDe(m) && !(m.attachments || []).length || /^\[unsupported message\]$/i.test(textoDe(m));
+
+export function modoAgente(env) {
+  const m = String(env.AGENTE_ACTIVO || "").trim().toLowerCase();
+  return m === "si" || m === "sí" ? "si" : m === "prueba" ? "prueba" : "no";
+}
+
+function enHorario(ms) {
+  const d = new Date(ms - 5 * 3600e3), dia = d.getUTCDay(), h = d.getUTCHours();
+  return (dia >= 1 && dia <= 5 && h >= 8 && h < 19) || (dia === 6 && h >= 8 && h < 14);
+}
+
+const PREFIJOS = [
+  ["1809", "DO", "República Dominicana"], ["1829", "DO", "República Dominicana"], ["1849", "DO", "República Dominicana"],
+  ["1787", "PR", "Puerto Rico"], ["1939", "PR", "Puerto Rico"],
+  ["593", "EC", "Ecuador"], ["507", "PA", "Panamá"], ["506", "CR", "Costa Rica"], ["502", "GT", "Guatemala"], ["503", "SV", "El Salvador"],
+  ["504", "HN", "Honduras"], ["505", "NI", "Nicaragua"], ["591", "BO", "Bolivia"], ["595", "PY", "Paraguay"], ["598", "UY", "Uruguay"],
+  ["57", "CO", "Colombia"], ["58", "VE", "Venezuela"], ["51", "PE", "Perú"], ["52", "MX", "México"], ["53", "CU", "Cuba"],
+  ["54", "AR", "Argentina"], ["55", "BR", "Brasil"], ["56", "CL", "Chile"], ["34", "ES", "España"],
+  ["1", "", "+1: Estados Unidos, Canadá u otro país del Caribe (pregunta cuál)"],
+];
+export function paisPorNumero(tel) {
+  const d = digitos(tel);
+  const p = PREFIJOS.find(([pre]) => d.startsWith(pre));
+  return p ? { iso: p[1], nombre: p[2] } : { iso: "", nombre: "desconocido" };
+}
+
+async function firmaValida(cuerpo, firma, secreto) {
+  if (!firma || !secreto) return false;
+  const enc = new TextEncoder();
+  const clave = await crypto.subtle.importKey("raw", enc.encode(secreto), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", clave, enc.encode(cuerpo)));
+  const hex = [...mac].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const f = String(firma).trim().toLowerCase().replace(/^sha256=/, "");
+  if (f.length !== hex.length) return false;
+  let dif = 0;
+  for (let i = 0; i < hex.length; i++) dif |= hex.charCodeAt(i) ^ f.charCodeAt(i);
+  return dif === 0;
+}
+
+function aBase64(buf) {
+  const b = new Uint8Array(buf); let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/* ---------------- 1. Webhook de Zernio ---------------- */
+export async function atenderWhatsApp(request, env) {
+  if (request.method !== "POST") return ok();
+  if (!env.ZERNIO_WEBHOOK_SECRET) return ok("Falta ZERNIO_WEBHOOK_SECRET", 503); // sin secreto no se acepta nada
+  const crudo = await request.text();
+  const firma = request.headers.get("X-Zernio-Signature") || request.headers.get("X-Late-Signature") || "";
+  if (!(await firmaValida(crudo, firma, env.ZERNIO_WEBHOOK_SECRET))) return ok("Firma inválida", 401);
+  let ev;
+  try { ev = JSON.parse(crudo); } catch { return ok("JSON inválido", 400); }
+  if (!ev || (ev.event !== "message.received" && ev.event !== "message.sent")) return ok();
+  if (modoAgente(env) === "no") return ok(); // apagado: no hace nada
+  const m = ev.message || {};
+  if (m.platform && m.platform !== "whatsapp") return ok();
+  const cid = m.conversationId || (ev.conversation || {}).id;
+  if (!cid || !env.CONVERSACIONES_WA) return ok();
+  if (ev.id && env.PEDIDOS) { // Zernio puede repetir un aviso: se procesa una sola vez
+    const k = "wa:evt:" + ev.id;
+    if (await env.PEDIDOS.get(k)) return ok();
+    await env.PEDIDOS.put(k, "1", { expirationTtl: 2 * DIA });
+  }
+  const chat = env.CONVERSACIONES_WA.get(env.CONVERSACIONES_WA.idFromName(cid));
+  await chat.fetch("https://agente/evento", { method: "POST", body: crudo });
+  return ok();
+}
+
+/* ---------------- 2. Memoria de cada conversación ---------------- */
+export class ConversacionWA {
+  constructor(state, env) { this.state = state; this.env = env; }
+
+  async fetch(request) {
+    const ev = await request.json().catch(() => null);
+    if (ev && ev.event === "message.sent") await this.saliente(ev);
+    else if (ev && ev.event === "message.received") await this.entrante(ev);
+    return ok();
+  }
+
+  // Un mensaje salió del número del negocio: ¿lo mandó el agente o Alexander?
+  async saliente(ev) {
+    const m = ev.message || {}, s = this.state.storage;
+    if (esAutomatico(m)) return;
+    const mios = (await s.get("mios")) || [];
+    if ([m.platformMessageId, m.id].filter(Boolean).some((id) => mios.includes(id))) return;
+    if (m.sentVia === "api" && ((await s.get("enviandoHasta")) || 0) > Date.now()) return; // es del agente (aviso adelantado)
+    await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
+    await s.delete("pendiente");
+    await s.deleteAlarm();
+  }
+
+  async entrante(ev) {
+    const env = this.env, md = modoAgente(env);
+    if (md === "no") return;
+    const m = ev.message || {}, conv = ev.conversation || {};
+    const cid = m.conversationId || conv.id;
+    if (lista(env.AGENTE_EXCLUIDOS).includes(cid)) return;
+    if (md === "prueba" && !lista(env.AGENTE_NUMEROS_PRUEBA).map(digitos).includes(digitos((m.sender || {}).phoneNumber))) return;
+    const s = this.state.storage;
+    if (((await s.get("humanoHasta")) || 0) > Date.now()) return;
+    await s.put("pendiente", ev);
+    await s.setAlarm(Date.now() + ESPERA_MS); // cada mensaje nuevo corre la alarma: se responde una vez
+  }
+
+  async alarm() {
+    const s = this.state.storage, ev = await s.get("pendiente");
+    if (!ev) return;
+    await s.delete("pendiente");
+    try { await atender(ev, this.env, s); }
+    catch (e) { // nunca se reintenta (evita mensajes dobles): se avisa a Alexander
+      console.error("agente", e && (e.stack || e.message));
+      await avisarTelegram(this.env, ev, "⚠️ <b>El agente no pudo responder</b>, respóndele tú", String((e && e.message) || e).slice(0, 200)).catch(() => {});
+    }
+  }
+}
+
+/* ---------------- 3. Responder ---------------- */
+async function atender(ev, env, s) {
+  if (!H) throw new Error("El agente no está conectado al servidor");
+  if (!env.ZERNIO_API_KEY || !env.ANTHROPIC_API_KEY) throw new Error("Faltan ZERNIO_API_KEY o ANTHROPIC_API_KEY");
+  if (((await s.get("humanoHasta")) || 0) > Date.now()) return;
+  const m = ev.message || {}, conv = ev.conversation || {};
+  const cid = m.conversationId || conv.id;
+  const cuenta = (ev.account || {}).accountId || env.ZERNIO_ACCOUNT_ID || (ev.account || {}).id;
+  const tel = digitos((m.sender || {}).phoneNumber);
+  const nombre = (m.sender || {}).name || conv.participantName || "";
+  const pais = paisPorNumero(tel);
+
+  // Freno de gasto
+  const hora = Math.floor(Date.now() / 3600e3), cont = (await s.get("contador")) || {};
+  const n = cont.hora === hora ? cont.n : 0;
+  if (n >= MAX_RESPUESTAS_HORA) {
+    await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
+    return avisarTelegram(env, ev, "🛑 <b>Freno del agente</b>: muchas respuestas en una hora en este chat, atiéndelo tú", "");
+  }
+
+  // Historial (de Zernio) + el mensaje actual si aún no aparece
+  const hist = await leerHistorial(env, cid, cuenta);
+  const tEste = tiempoDe(m) || Date.parse(ev.timestamp) || Date.now();
+  if (!hist.some((x) => x.direction === "incoming" && Math.abs(tiempoDe(x) - tEste) < 3000)) {
+    hist.push({ direction: "incoming", message: textoDe(m), attachments: m.attachments || [], sentAt: m.sentAt || ev.timestamp });
+  }
+  hist.sort((a, b) => tiempoDe(a) - tiempoDe(b));
+
+  // ¿Alguien ya respondió después de este mensaje? ¿Alexander escribió en las últimas horas?
+  const mios = (await s.get("mios")) || [];
+  const delAgente = (x) => mios.includes(x.id) || x.sentVia === "api";
+  const salientesReales = hist.filter((x) => x.direction === "outgoing" && !esAutomatico(x));
+  if (salientesReales.some((x) => tiempoDe(x) > tEste)) return;
+  if (salientesReales.some((x) => !delAgente(x) && Date.now() - tiempoDe(x) < HUMANO_HORAS * 3600e3)) {
+    await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
+    return;
+  }
+
+  // Audios del último turno del cliente
+  const idxSal = hist.map((x) => x.direction).lastIndexOf("outgoing");
+  const turno = hist.slice(idxSal + 1).filter((x) => x.direction === "incoming");
+  let audiosFallidos = 0, transcritos = 0;
+  for (const x of turno) {
+    const a = (x.attachments || []).find((y) => y.type === "audio");
+    if (!a || transcritos >= 3) continue;
+    const t = await transcribir(env, a.url).catch(() => "");
+    if (t) { x.transcripcion = t; transcritos++; } else audiosFallidos++;
+  }
+
+  // Consulta al modelo
+  const ahora = Date.now();
+  const campana = ((m.metadata || {}).ad || {}).campaignName || (conv.adAttribution || {}).campaignName || "";
+  const previo = hist.some((x) => tiempoDe(x) < ahora - 2 * DIA * 1000);
+  const sistema = `${CONOCIMIENTO}
+
+DATOS DE LA TIENDA (hoy)
+${datosTienda(env)}
+Hora actual en Colombia: ${horaCO(ahora)} (${enHorario(ahora) ? "dentro" : "FUERA"} del horario de atención).`;
+  const pedido = `CLIENTE
+- Nombre en WhatsApp: ${nombre || "(desconocido)"}
+- País por el número: ${pais.nombre}
+- ¿Ya había escrito antes?: ${previo ? "sí, tiene historial con el negocio" : "no, parece cliente nuevo"}
+${campana ? `- Llegó por el anuncio: ${campana}\n` : ""}${audiosFallidos ? `- OJO: ${audiosFallidos} audio(s) del cliente no se pudieron transcribir.\n` : ""}
+HISTORIAL (lo más antiguo arriba; NEGOCIO incluye mensajes de Alexander y del asistente)
+${hist.slice(-HISTORIAL).map(lineaHistorial).join("\n")}
+
+Responde al último turno del cliente. Usa las herramientas para cualquier precio o envío y termina SIEMPRE con la herramienta responder.`;
+
+  const decision = await pensar(env, sistema, pedido, { pais: pais.iso });
+
+  // Enviar
+  const texto = String(decision.mensaje || "").trim().slice(0, 1500);
+  const fotos = [...new Set((decision.fotos || []).filter((id) => H.Tienda.PRODUCTOS.some((p) => p.id === id)))].slice(0, MAX_FOTOS);
+  const enviados = [];
+  if (texto || fotos.length) await s.put("enviandoHasta", Date.now() + 120e3);
+  if (texto) enviados.push(await enviarZernio(env, cid, cuenta, { message: texto }));
+  for (const id of fotos) {
+    enviados.push(await enviarZernio(env, cid, cuenta, { attachmentUrl: `${H.Tienda.NEGOCIO.sitio}/fotos/${id}/1.jpg`, attachmentType: "image" }).catch(() => ""));
+  }
+  await s.put("mios", [...mios, ...enviados.filter(Boolean)].slice(-60));
+  await s.put("contador", { hora, n: n + 1 });
+
+  // Ceder / avisar
+  if (decision.ceder) {
+    await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
+    await avisarTelegram(env, ev, "🤝 <b>Te paso un cliente de WhatsApp</b>", decision.motivo_cesion, decision.resumen, texto);
+  } else if (decision.avisar) {
+    await avisarTelegram(env, ev, "👀 <b>Pendiente de este cliente</b> (el agente sigue atendiendo)", decision.motivo_aviso, decision.resumen, texto);
+  }
+
+  // CRM mínimo
+  if (env.PEDIDOS && tel) {
+    const k = "wa:cliente:" + tel, antes = JSON.parse((await env.PEDIDOS.get(k)) || "{}");
+    await env.PEDIDOS.put(k, JSON.stringify({
+      ...antes, nombre: nombre || antes.nombre, telefono: tel, pais: pais.iso || antes.pais, conversacion: cid,
+      primerContacto: antes.primerContacto || new Date(tiempoDe(hist[0]) || ahora).toISOString(), ultimoContacto: new Date(ahora).toISOString(),
+      anuncio: campana || antes.anuncio || "", resumen: decision.resumen || antes.resumen || "",
+      cesiones: (antes.cesiones || 0) + (decision.ceder ? 1 : 0), respuestasAgente: (antes.respuestasAgente || 0) + 1,
+    }), { expirationTtl: 400 * DIA });
+  }
+}
+
+function lineaHistorial(x) {
+  const quien = x.direction === "incoming" ? "CLIENTE" : "NEGOCIO";
+  const adj = (x.attachments || []).map((a) => (a.type === "audio"
+    ? (x.transcripcion ? `[AUDIO transcrito: "${x.transcripcion}"]` : "[AUDIO sin transcribir]")
+    : `[${String(a.type || "adjunto").toUpperCase()} que no puedes ver]`)).join(" ");
+  const t = textoDe(x).replace(/^\[unsupported message\]$/i, "[mensaje no soportado]");
+  return `[${horaCO(tiempoDe(x))}] ${quien}: ${[adj, t].filter(Boolean).join(" ").slice(0, 600)}`;
+}
+
+async function leerHistorial(env, cid, cuenta) {
+  const u = `${ZERNIO}/inbox/conversations/${encodeURIComponent(cid)}/messages?accountId=${encodeURIComponent(cuenta || "")}&limit=${HISTORIAL + 10}&sortOrder=desc`;
+  const r = await fetch(u, { headers: { Authorization: `Bearer ${env.ZERNIO_API_KEY}` }, signal: AbortSignal.timeout(12000) });
+  if (!r.ok) throw new Error("Zernio historial " + r.status);
+  const d = await r.json();
+  return (d.messages || d.data || []).filter((x) => !x.isDeleted).reverse();
+}
+
+async function enviarZernio(env, cid, cuenta, cuerpo) {
+  const r = await fetch(`${ZERNIO}/inbox/conversations/${encodeURIComponent(cid)}/messages`, {
+    method: "POST", signal: AbortSignal.timeout(15000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.ZERNIO_API_KEY}` },
+    body: JSON.stringify({ accountId: cuenta, ...cuerpo }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.success === false) throw new Error(`Zernio envío ${r.status} ${JSON.stringify(d).slice(0, 200)}`);
+  return (d.data || {}).messageId || "";
+}
+
+async function transcribir(env, url) {
+  if (!env.AI || !url) return "";
+  let r = await fetch(url, { signal: AbortSignal.timeout(15000) }).catch(() => null);
+  if (!r || !r.ok) r = await fetch(url, { headers: { Authorization: `Bearer ${env.ZERNIO_API_KEY}` }, signal: AbortSignal.timeout(15000) }).catch(() => null);
+  if (!r || !r.ok) return "";
+  const buf = await r.arrayBuffer();
+  if (buf.byteLength < 500 || buf.byteLength > 8 * 1024 * 1024) return "";
+  const out = await env.AI.run(MODELO_VOZ, {
+    audio: aBase64(buf), language: "es", vad_filter: true,
+    initial_prompt: "Cliente preguntando por espuelas para gallos, patapiojas, líneas, pares, docenas, envío, Interrapidísimo, contraentrega, Nequi.",
+  });
+  return String((out && out.text) || "").trim().slice(0, 1000);
+}
+
+async function avisarTelegram(env, ev, titulo, motivo, resumen, respuesta) {
+  if (!H || !H.telegram) return;
+  const m = ev.message || {}, tel = digitos((m.sender || {}).phoneNumber);
+  const nombre = (m.sender || {}).name || (ev.conversation || {}).participantName || "Cliente";
+  const partes = [titulo, `<b>Cliente:</b> ${esc(nombre)}${tel ? ` (+${tel})` : ""}`];
+  if (motivo) partes.push(`<b>Motivo:</b> ${esc(motivo)}`);
+  if (resumen) partes.push(`<b>Resumen:</b> ${esc(resumen)}`);
+  const ultimo = textoDe(m);
+  if (ultimo) partes.push(`<b>Último mensaje:</b> “${esc(ultimo.slice(0, 300))}”`);
+  if (respuesta) partes.push(`<b>El agente respondió:</b> “${esc(respuesta.slice(0, 300))}”`);
+  if (tel) partes.push(`https://wa.me/${tel}`);
+  await H.telegram(env, partes.join("\n"));
+}
+
+/* ---------------- 4. Datos de la tienda para el modelo ---------------- */
+function datosTienda(env) {
+  const T = H.Tienda, N = T.NEGOCIO, I = T.ENVIO_INTERNACIONAL_USD, aj = T.AJUSTE_EMPAQUE;
+  const l = [`Tienda en línea: ${N.sitio}`, `Horario de atención: ${N.horario}`, "Productos (id → descripción | precios en pesos colombianos):"];
+  for (const p of T.PRODUCTOS) {
+    if (p.tipo === "espuela") l.push(`- ${p.id} → ${p.nombre}${p.detalle ? ` (${p.detalle})` : ""}; medidas en líneas: ${p.medidas.join(", ")}; dureza: ${p.dureza || "—"}; precio por par en bolsa: ${T.NIVELES.map((n) => `${n.nombre} ${pesos(p.precios[n.id])}`).join(", ")}`);
+    else if (p.tipo === "patapioja") l.push(`- ${p.id} → ${p.nombre}; colores: ${p.colores.map((c) => c.id).join(", ")}; precio por par: ${p.tramos.map((t) => `desde ${t.desde} pares ${pesos(t.precio)}`).join(", ")}`);
+    else l.push(`- ${p.id} → ${p.nombre}; variantes: ${(p.variantes || []).map((v) => `${v.id} = ${v.nombre} ${v.precio != null ? pesos(v.precio) : `${pesos(v.unidad)} c/u o ${pesos(v.docena)} la docena`}`).join("; ")}`);
+  }
+  l.push(`Presentación de espuelas: bolsa, caja (+${pesos(aj.caja)} por par) o granel (−${pesos(Math.abs(aj.granel))} por par, sin plástico).`);
+  l.push(`Niveles de espuela según el total de pares: ${T.NIVELES.map((n) => `${n.nombre} desde ${n.desde}`).join(", ")}.`);
+  if (T.MINIMO_PARES) l.push(`Pedido mínimo: ${T.MINIMO_PARES.espuela} pares de espuela o ${T.MINIMO_PARES.patapioja} pares de patapioja sintética.`);
+  l.push(`Regalo opción A (pares de patapioja sintética según pares de espuela): ${T.REGALOS.map((r) => `${r.pares} desde ${r.desde}`).join(", ")}. Opción B: 1 par de espuela por cada 25 pares de espuela. Una u otra, nunca ambas.`);
+  l.push(`Contraentrega (solo Colombia) desde ${pesos(T.CONTRAENTREGA_MINIMO)}; el envío se paga por anticipado.`);
+  if (T.CUOTAS_SIN_INTERES > 1) l.push(`Pago en línea con tarjeta: hasta ${T.CUOTAS_SIN_INTERES} cuotas sin interés.`);
+  l.push(`Envío propio internacional (estimado máximo): USD ${I.base} hasta 1 kg + USD ${I.porMedioKiloExtra} por cada medio kilo adicional, a: ${(I.paisesConTarifa || []).join(", ")}. Demás países: DHL.`);
+  l.push(`NO se envía a: ${Object.values(N.paisesSinEnvio || {}).join(", ")}.`);
+  l.push(`Nequi del negocio: ${env.PAGO_NEQUI ? String(env.PAGO_NEQUI).slice(0, 200) : "(no configurado: si piden Nequi, cede)"}`);
+  l.push(`Fotos que puedes enviar (ids para el campo fotos): ${T.PRODUCTOS.map((p) => p.id).join(", ")}.`);
+  return l.join("\n");
+}
+
+/* ---------------- 5. Modelo + herramientas ---------------- */
+const LINEAS = {
+  type: "array", description: "Productos del pedido",
+  items: {
+    type: "object", required: ["producto", "cantidad"],
+    properties: {
+      producto: { type: "string", description: "id del producto (ver DATOS DE LA TIENDA)" },
+      cantidad: { type: "integer", description: "Pares, unidades o barras" },
+      medida: { type: "integer", description: "Solo espuelas: líneas" },
+      presentacion: { type: "string", enum: ["bolsa", "caja", "granel"], description: "Solo espuelas; por defecto bolsa" },
+      color: { type: "string", description: "Solo patapioja sintética" },
+      variante: { type: "string", description: "Cera, esparadrapo, patapioja metálica: id de la variante" },
+    },
+  },
+};
+const HERRAMIENTAS = [
+  { name: "cotizar_productos", description: "Calcula precios, total, nivel, mínimo y regalos de un pedido con los precios reales de la tienda. Úsala siempre antes de dar un total.",
+    input_schema: { type: "object", required: ["lineas"], properties: { lineas: LINEAS } } },
+  { name: "cotizar_envio_colombia", description: "Valor del envío con Interrapidísimo a un municipio de Colombia. Necesita municipio y departamento.",
+    input_schema: { type: "object", required: ["lineas", "municipio", "departamento"], properties: {
+      lineas: LINEAS, municipio: { type: "string" }, departamento: { type: "string", description: "Nombre oficial completo, ej. Valle del Cauca, Norte de Santander, La Guajira, Bogotá D.C." },
+      contraentrega: { type: "boolean", description: "true si el cliente paga los productos al recibir" },
+      recoger_en_oficina: { type: "boolean", description: "true solo si no quiere entrega a domicilio o la zona solo tiene oficina" } } } },
+  { name: "cotizar_envio_internacional", description: "Envío fuera de Colombia: envío propio (si aplica) y DHL según la ciudad.",
+    input_schema: { type: "object", required: ["lineas", "pais"], properties: {
+      lineas: LINEAS, pais: { type: "string", description: "Código ISO de 2 letras, ej. PA, CR, VE, EC, PE, MX" },
+      ciudad: { type: "string" }, region: { type: "string", description: "Provincia, departamento o estado" }, postal: { type: "string" } } } },
+  { name: "responder", description: "Respuesta final para el cliente. Llámala siempre al terminar.",
+    input_schema: { type: "object", required: ["mensaje", "ceder", "avisar", "resumen"], properties: {
+      mensaje: { type: "string", description: "Un solo mensaje de WhatsApp para el cliente" },
+      fotos: { type: "array", items: { type: "string" }, description: "ids de productos cuya foto enviar después del mensaje (máximo 4)" },
+      ceder: { type: "boolean" }, motivo_cesion: { type: "string" },
+      avisar: { type: "boolean" }, motivo_aviso: { type: "string" },
+      resumen: { type: "string", description: "Una línea para Alexander: qué quiere el cliente y en qué va" } } } },
+];
+
+async function llamarModelo(env, sistema, mensajes, eleccion) {
+  const r = await fetch(ANTHROPIC, {
+    method: "POST", signal: AbortSignal.timeout(45000),
+    headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: env.ANTHROPIC_MODEL || MODELO_DEFECTO, max_tokens: 1500, system: sistema, messages: mensajes, tools: HERRAMIENTAS, tool_choice: eleccion }),
+  });
+  if (!r.ok) throw new Error(`Modelo ${r.status} ${(await r.text()).slice(0, 200)}`);
+  return r.json();
+}
+
+async function pensar(env, sistema, pedido, ctx) {
+  const mensajes = [{ role: "user", content: pedido }];
+  for (let ronda = 0; ronda < MAX_RONDAS; ronda++) {
+    const ultima = ronda === MAX_RONDAS - 1;
+    const res = await llamarModelo(env, sistema, mensajes, ultima ? { type: "tool", name: "responder" } : { type: "any" });
+    const usos = (res.content || []).filter((b) => b.type === "tool_use");
+    const fin = usos.find((u) => u.name === "responder");
+    if (fin) return fin.input || {};
+    if (!usos.length) throw new Error("El modelo no usó herramientas");
+    mensajes.push({ role: "assistant", content: res.content });
+    const resultados = [];
+    for (const u of usos) {
+      let salida;
+      try { salida = await ejecutar(u.name, u.input || {}, env, ctx); }
+      catch (e) { salida = { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
+      resultados.push({ type: "tool_result", tool_use_id: u.id, content: JSON.stringify(salida) });
+    }
+    mensajes.push({ role: "user", content: resultados });
+  }
+  throw new Error("El modelo no terminó la respuesta");
+}
+
+const ALIAS_DEPTO = { valle: "Valle del Cauca", "el valle": "Valle del Cauca", guajira: "La Guajira", "norte santander": "Norte de Santander", bogota: "Bogotá D.C.", "bogotá": "Bogotá D.C.", "san andres": "San Andrés" };
+
+function opcionesDe(p) {
+  const T = H.Tienda;
+  if (!p) return { productos_validos: T.PRODUCTOS.map((x) => x.id) };
+  if (p.tipo === "espuela") return { medidas: p.medidas, presentaciones: ["bolsa", "caja", "granel"] };
+  if (p.tipo === "patapioja") return { colores: p.colores.map((c) => c.id) };
+  return { variantes: (p.variantes || []).map((v) => v.id) };
+}
+
+function lineasDesde(entrada) {
+  const C = H.Tienda.Calculo, limpias = [], errores = [];
+  for (const l of (Array.isArray(entrada) ? entrada : []).slice(0, 30)) {
+    const x = C.limpiarLinea({ presentacion: "bolsa", ...l });
+    const p = C.prod(x.producto);
+    if (p && C.lineaValida(x)) limpias.push(x);
+    else errores.push({ linea: l, opciones: opcionesDe(p) });
+  }
+  return { limpias, errores };
+}
+
+export async function ejecutar(nombre, inp, env, ctx = {}) {
+  const T = H.Tienda, C = T.Calculo;
+  const { limpias, errores } = lineasDesde(inp.lineas);
+  if (errores.length) return { ok: false, error: "Hay productos con datos inválidos: corrige o pregúntale al cliente", errores };
+  if (!limpias.length) return { ok: false, error: "No hay productos en el pedido" };
+
+  if (nombre === "cotizar_productos") {
+    const pares = C.paresEspuela(limpias), subtotal = Math.round(C.subtotal(limpias));
+    const sig = pares ? C.siguienteNivel(pares) : null, regaloA = pares ? C.regaloPara(pares) : null;
+    const sigRegalo = T.REGALOS.find((r) => r.desde > pares);
+    const res = {
+      ok: true,
+      lineas: limpias.map((l) => { const pr = C.precioLinea(l, limpias); return { producto: C.describirLinea(l).nombre, detalle: C.describirLinea(l).detalle, unitario_cop: pr.unitario, total_cop: pr.total }; }),
+      subtotal_cop: subtotal, pares_espuela: pares, pares_patapioja: C.paresPatapioja(limpias),
+      nivel: pares ? C.nivelPara(pares).nombre : null,
+      siguiente_nivel: sig ? { nombre: sig.nombre, desde: sig.desde, faltan_pares: sig.desde - pares } : null,
+      falta_minimo: C.faltaMinimo ? C.faltaMinimo(limpias) || null : null,
+      regalo: pares ? { opcion_A_pares_patapioja: regaloA ? regaloA.pares : 0, opcion_B_pares_espuela: Math.floor(pares / 25), nota: "El cliente elige una opción, nunca ambas" } : null,
+      siguiente_regalo_A: sigRegalo ? { desde: sigRegalo.desde, pares_patapioja: sigRegalo.pares, faltan_pares: sigRegalo.desde - pares } : null,
+      contraentrega_disponible: subtotal >= T.CONTRAENTREGA_MINIMO, peso_gramos: C.pesoGramos(limpias),
+    };
+    if (ctx.pais && ctx.pais !== "CO" && H.tasaDolar) { const tasa = await H.tasaDolar(env); res.subtotal_usd_aprox = Math.round((subtotal / tasa) * 100) / 100; }
+    return res;
+  }
+
+  if (nombre === "cotizar_envio_colombia") {
+    if (!inp.municipio || !inp.departamento) return { ok: false, error: "Falta el municipio o el departamento: pregúntaselo al cliente" };
+    const subtotal = C.subtotal(limpias);
+    if (inp.contraentrega && subtotal < T.CONTRAENTREGA_MINIMO) return { ok: false, error: `La contraentrega es desde ${pesos(T.CONTRAENTREGA_MINIMO)}; este pedido suma ${pesos(subtotal)}.` };
+    const oficina = Boolean(inp.recoger_en_oficina);
+    const depto = ALIAS_DEPTO[String(inp.departamento).trim().toLowerCase()] || String(inp.departamento);
+    const r = await H.fleteColombia({ lineas: limpias, departamento: depto, ciudad: String(inp.municipio), destinatario: {}, contraentrega: Boolean(inp.contraentrega), servicio: oficina ? "mensajeria_do" : undefined }, env);
+    if (!r.ok) return { ok: false, error: "No se pudo cotizar con ese municipio y departamento. Confirma con el cliente el nombre exacto de ambos; si sigue fallando, cede a Alexander." };
+    return { ok: true, valor_envio_cop: r.valor, municipio: r.municipio, transportadora: r.transportadora, servicio: r.servicio, contraentrega: r.contraentrega,
+      ...(oficina ? { recoger_en_oficina_disponible: r.service === "mensajeria_do" } : {}), nota: "No prometas fecha de entrega." };
+  }
+
+  if (nombre === "cotizar_envio_internacional") {
+    const pais = String(inp.pais || "").toUpperCase().slice(0, 2);
+    if ((T.NEGOCIO.paisesSinEnvio || {})[pais]) return { ok: false, sin_envio: true, error: "No se envía a ese país por restricciones de importación." };
+    if (pais === "CO") return { ok: false, error: "Para Colombia usa cotizar_envio_colombia" };
+    const res = { ok: true, pais, impuestos: "Con DHL, los impuestos de aduana del país de destino los paga quien recibe." };
+    if (C.tieneTarifaInternacional(pais)) { res.envio_propio_usd = C.envioInternacionalUSD(limpias); res.envio_propio_nota = "Estimado máximo: si sale menor, se devuelve la diferencia o se abona para más producto."; }
+    if (inp.ciudad && H.fleteDHL) {
+      const d = await H.fleteDHL(limpias, { pais, region: String(inp.region || ""), ciudad: String(inp.ciudad), postal: String(inp.postal || "") }, env).catch((e) => ({ ok: false, error: String(e.message || e) }));
+      res.dhl = d.ok ? { usd: d.usd, servicio: d.servicio } : { error: d.error };
+    } else res.dhl = { error: "Para cotizar DHL falta la ciudad (y el código postal si el país lo usa)." };
+    return res;
+  }
+  return { ok: false, error: "Herramienta desconocida" };
+}
