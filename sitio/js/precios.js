@@ -59,15 +59,17 @@ const CONTRAENTREGA_MINIMO = 45000;
 const CUOTAS_SIN_INTERES = 3;
 
 /* ---------- ENVÍO INTERNACIONAL (esta parte sí va en DÓLARES) ---------- */
-// ENVÍO PROPIO (Panamá y Costa Rica): base + valor por cada medio kilo adicional después del primer kilo.
+// ENVÍO PROPIO (Panamá, Costa Rica y Venezuela): base hasta el primer kilo + valor por cada medio kilo (1 libra) adicional.
+// Es un ESTIMADO MÁXIMO: por experiencia es el valor más seguro puerta a puerta. Si el flete real sale menor,
+// la diferencia se le devuelve al cliente o se le abona para llevar más producto.
 // paisesConTarifa: países donde se ofrece el envío propio (códigos de 2 letras).
-// DHL: a todos los demás países (y como segunda opción en Panamá y Costa Rica) se cotiza en vivo con Envia
+// DHL: a todos los demás países (y como segunda opción en Panamá, Costa Rica y Venezuela) se cotiza en vivo con Envia
 // el servicio de DHL más barato. El cliente paga por PayPal en la misma página.
 //   recargoUSD: dólares que se suman a la tarifa de DHL (por ejemplo, la caja o la comisión). 0 = nada
 //   redondearA: la tarifa se redondea hacia arriba a este múltiplo de dólares (1 → 37,20 queda en 38)
 //   impuestos: quién paga los impuestos y trámites de aduana del país de destino. "recipient" = quien recibe
 const ENVIO_INTERNACIONAL_USD = {
-  base: 25, porMedioKiloExtra: 6, ecuador: "USD 40 a 50", paisesConTarifa: ["PA", "CR"],
+  base: 25, porMedioKiloExtra: 6, paisesConTarifa: ["PA", "CR", "VE"],
   dhl: { activo: true, transportadora: "dhl", recargoUSD: 0, redondearA: 1, impuestos: "recipient" },
 };
 

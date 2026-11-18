@@ -246,7 +246,7 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario, contr
   };
 }
 
-/* ---------------- Envío internacional: envío propio (PA, CR) y DHL cotizado con Envia ---------------- */
+/* ---------------- Envío internacional: envío propio (PA, CR, VE) y DHL cotizado con Envia ---------------- */
 // Partidas arancelarias aproximadas (las pide la aduana en la factura comercial de DHL)
 const PARTIDA = { metalica: "732690", cera: "340490", esparadrapo: "300510" }; // el resto son plásticos: 392690
 const partida = (id) => PARTIDA[id] || "392690";

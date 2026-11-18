@@ -409,7 +409,7 @@ Sitemap: ${absoluta("/sitemap.xml")}
 `);
 writeFileSync(join(sitio, "llms.txt"), `# Ingeniero Espuelístico
 
-> Fábrica de espuelas para gallos y accesorios en Ibagué, Tolima, Colombia. Más de 25 años de tradición familiar. Venta al detal y por mayor, envíos a toda Colombia y exportación a Ecuador, Perú, Panamá y Costa Rica. No se envía a Estados Unidos, sus territorios ni Canadá.
+> Fábrica de espuelas para gallos y accesorios en Ibagué, Tolima, Colombia. Más de 25 años de tradición familiar. Venta al detal y por mayor, envíos a toda Colombia y exportación a Ecuador, Perú, Panamá, Costa Rica y Venezuela. No se envía a Estados Unidos, sus territorios ni Canadá.
 
 - Tienda: ${absoluta("/")}
 - WhatsApp: ${N.telefonoVisible}

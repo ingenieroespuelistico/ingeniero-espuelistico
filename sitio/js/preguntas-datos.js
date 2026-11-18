@@ -30,7 +30,7 @@ const PREGUNTAS = [
   },
   {
     pregunta: "¿Envían a otros países?",
-    respuesta: `Sí. Enviamos con DHL Express a Ecuador, Perú y demás países: la tienda calcula el valor exacto con tu ciudad antes de pagar, y pagas con PayPal en dólares. A Panamá y Costa Rica también puedes elegir nuestro envío propio: USD ${ENVIO_INTERNACIONAL_USD.base} hasta 1 kg más USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. Con DHL, los impuestos de aduana de tu país, si aplican, los paga quien recibe. No enviamos a Estados Unidos (incluidos Puerto Rico y sus demás territorios) ni a Canadá, porque sus leyes restringen la importación de estos productos.`,
+    respuesta: `Sí. Enviamos con DHL Express a Ecuador, Perú y demás países: la tienda calcula el valor exacto con tu ciudad antes de pagar, y pagas con PayPal en dólares. A Panamá, Costa Rica y Venezuela también puedes elegir nuestro envío propio: USD ${ENVIO_INTERNACIONAL_USD.base} hasta 1 kg más USD ${ENVIO_INTERNACIONAL_USD.porMedioKiloExtra} por cada medio kilo adicional, puerta a puerta. Es un valor máximo: si el envío sale más barato, te devolvemos la diferencia o te la abonamos para llevar más producto. Con DHL, los impuestos de aduana de tu país, si aplican, los paga quien recibe. No enviamos a Estados Unidos (incluidos Puerto Rico y sus demás territorios) ni a Canadá, porque sus leyes restringen la importación de estos productos.`,
   },
   {
     pregunta: "¿Dan algún regalo?",

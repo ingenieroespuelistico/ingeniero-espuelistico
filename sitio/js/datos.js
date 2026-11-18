@@ -71,7 +71,7 @@ const PRODUCTOS = window.CATALOGO || [];
 const ENVIOS_INTERNACIONALES = {
   "Panamá": { tipo: "formula" },
   "Costa Rica": { tipo: "formula" },
-  "Ecuador": { tipo: "rango", texto: ENVIO_INTERNACIONAL_USD.ecuador },
+  "Venezuela": { tipo: "formula" },
 };
 
 // Descripción y dureza de cada producto (vienen dentro de cada archivo de js/productos/).
