@@ -13,6 +13,10 @@ const PREGUNTAS = [
     respuesta: "El precio por par baja según el total de pares de espuela de tu pedido, aunque mezcles referencias y medidas: minorista hasta 119 pares, mayorista de 120 a 499, distribuidor de 500 a 1.199 y gran distribuidor desde 1.200. Las patapiojas tienen su propia tabla y no se suman con las espuelas.",
   },
   {
+    pregunta: "¿Cuál es el pedido mínimo?",
+    respuesta: `${MINIMO_PARES.espuela} pares de espuela, que puedes mezclar entre referencias y medidas, o una docena de patapioja sintética, que puedes mezclar entre colores. La cera, el esparadrapo y la patapioja metálica no tienen mínimo.`,
+  },
+  {
     pregunta: "¿Las espuelas vienen selladas?",
     respuesta: `En bolsa y en caja vienen forradas con un plástico removible, listas para el uso. A granel van sin plástico ni empaque y cuestan $${Math.abs(AJUSTE_EMPAQUE.granel).toLocaleString("es-CO")} pesos menos por par.`,
   },

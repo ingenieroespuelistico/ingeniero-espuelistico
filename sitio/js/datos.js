@@ -42,7 +42,7 @@ const AGENDA = {
 
 // Niveles de precio de espuelas: se calculan con el total de pares de espuela del pedido.
 const NIVELES = [
-  { id: "minorista", nombre: "Minorista", desde: 1 },
+  { id: "minorista", nombre: "Minorista", desde: 12 }, // igual al pedido mínimo de espuelas
   { id: "mayorista", nombre: "Mayorista", desde: 120 },
   { id: "distribuidor", nombre: "Distribuidor", desde: 500 },
   { id: "gran_distribuidor", nombre: "Gran distribuidor", desde: 1200 },
@@ -57,6 +57,10 @@ const PRESENTACIONES = [
 const PULGADAS = { 30: "1.2", 35: "1.4", 38: "1.5", 40: "1.6", 42: "1.7", 43: "1.7" };
 
 // Regalo en pares de patapioja sintética según pares de espuela
+// Pedido mínimo en pares. Espuelas: total del pedido (se mezclan referencias y medidas).
+// Patapioja sintética: total del pedido (se mezclan colores). Cera, esparadrapo y metálica no tienen mínimo.
+const MINIMO_PARES = { espuela: 12, patapioja: 12 };
+
 const REGALOS = [
   { desde: 50, pares: 6 },
   { desde: 100, pares: 12 },

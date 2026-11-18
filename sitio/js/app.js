@@ -58,10 +58,20 @@
     const lista = [];
     const total = subtotal();
 
+    // Pedido mínimo: va primero, con un botón para completarlo
+    const faltaMin = C.faltaMinimo(pedido);
+    if (faltaMin) {
+      const esEspuela = paresEspuela() > 0 && paresEspuela() < (MINIMO_PARES.espuela || 0);
+      const tipo = esEspuela ? (l) => prod(l.producto).tipo === "espuela" : (l) => l.producto === "patapioja";
+      const base = pedido.filter(tipo).sort((a, b) => b.cantidad - a.cantidad)[0];
+      const falta = esEspuela ? MINIMO_PARES.espuela - paresEspuela() : MINIMO_PARES.patapioja - paresPatapioja();
+      lista.push({ texto: faltaMin, boton: `Agregar ${falta} pares`, accion: () => { base.cantidad += falta; guardar(); pintarPedido(); } });
+    }
+
     // Espuelas: cerca del siguiente nivel
     const pares = paresEspuela();
     const sig = siguienteNivel(pares);
-    if (pares > 0 && sig && pares >= sig.desde * 0.8) {
+    if (pares >= NIVELES[0].desde && sig && pares >= sig.desde * 0.8) {
       const falta = sig.desde - pares;
       const base = pedido.filter((l) => prod(l.producto).tipo === "espuela").sort((a, b) => b.cantidad - a.cantidad)[0];
       const simulado = pedido.map((l) => (l === base ? { ...l, cantidad: l.cantidad + falta } : l));
@@ -616,6 +626,8 @@
     e.preventDefault();
     const f = e.target, error = $("#error-formulario");
     if (!pedido.length) { error.textContent = "Agrega al menos un producto para confirmar tu pedido."; return; }
+    const faltaMin = C.faltaMinimo(pedido);
+    if (faltaMin) { error.textContent = faltaMin; return; }
     const fallar = (msg, campo) => { error.textContent = msg; if (campo) campo.focus(); };
     const faltan = $$("input[required]:not([type=checkbox])", f).filter((i) => !i.closest("[hidden]") && !i.value.trim());
     if (faltan.length) return fallar("Completa todos los datos de envío para confirmar.", faltan[0]);
