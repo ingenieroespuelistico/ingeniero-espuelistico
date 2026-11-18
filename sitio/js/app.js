@@ -237,7 +237,7 @@
       <label class="campo">Presentación<select name="presentacion">${opciones(PRESENTACIONES, (x) => x.id, (x) => `${x.nombre}${x.ajuste ? ` (${x.ajuste > 0 ? "+" : "−"}${pesos(Math.abs(x.ajuste))})` : ""}`)}</select></label>
       <label class="campo campo--ancho">Cantidad de pares<input name="cantidad" type="number" min="1" max="20000" value="12" inputmode="numeric"></label>`;
     if (p.tipo === "patapioja") return `
-      <label class="campo">Color<select name="color">${opciones(p.colores, (c) => c.id, (c) => `${c.nombre}: ${c.nota}`)}</select></label>
+      <label class="campo">Color<select name="color">${opciones(p.colores, (c) => c.id, (c) => (c.nota ? `${c.nombre}: ${c.nota}` : c.nombre))}</select></label>
       <label class="campo">Cantidad de pares<input name="cantidad" type="number" min="1" max="20000" value="12" inputmode="numeric"></label>`;
     if (p.tipo === "unidad-docena") return `
       <label class="campo">Tipo<select name="variante">${opciones(p.variantes, (v) => v.id, (v) => v.nombre)}</select></label>

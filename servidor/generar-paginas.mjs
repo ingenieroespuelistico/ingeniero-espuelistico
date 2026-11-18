@@ -102,7 +102,7 @@ function tablaPrecios(p) {
 function datosTecnicos(p) {
   const filas = [];
   if (p.medidas) filas.push(["Medidas", p.medidas.map((m) => `${m} líneas (${Tienda.PULGADAS[m]}")`).join(", ")]);
-  if (p.colores) filas.push(["Colores", p.colores.map((c) => `${c.nombre} (${c.nota})`).join(", ")]);
+  if (p.colores) filas.push(["Colores", p.colores.map((c) => (c.nota ? `${c.nombre} (${c.nota})` : c.nombre)).join(", ")]);
   if (p.pesoPar) filas.push(["Peso aproximado", `${String(p.pesoPar).replace(".", ",")} g por par`]);
   if (p.variantes && p.tipo !== "patapioja") filas.push(["Peso aproximado", p.variantes.map((v) => `${esc(v.nombre)}: ${v.peso} g`).join(" · ")]);
   if (p.dureza && p.dureza !== "—") filas.push(["Dureza", p.dureza]);
