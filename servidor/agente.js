@@ -32,6 +32,7 @@ const ESPERA_MS = 7000;             // espera para juntar mensajes seguidos del 
 const HUMANO_HORAS = 12;            // tras escribir Alexander (o tras ceder), el agente calla
 const MAX_RONDAS = 4;               // vueltas de herramientas por respuesta
 const MAX_FOTOS = 4;
+const FOTOS_DIAS = 30;              // una foto ya enviada en el chat no se repite durante este tiempo (salvo que el cliente la pida)
 const MAX_RESPUESTAS_HORA = 20;     // freno de gasto por chat
 const HISTORIAL = 30;               // mensajes de contexto
 const DIA = 86400;
@@ -291,6 +292,9 @@ async function atender(ev, env, s) {
   const ahora = Date.now();
   const campana = ((m.metadata || {}).ad || {}).campaignName || (conv.adAttribution || {}).campaignName || "";
   const previo = hist.some((x) => tiempoDe(x) < ahora - 2 * DIA * 1000);
+  const fotosYa = Object.fromEntries(Object.entries((await s.get("fotosEnviadas")) || {}).filter(([, t]) => ahora - t < FOTOS_DIAS * DIA * 1000));
+  const nombreProd = (id) => (H.Tienda.PRODUCTOS.find((p) => p.id === id) || {}).nombre || id;
+  const fotosTexto = Object.entries(fotosYa).map(([id, t]) => `${nombreProd(id)} (id ${id}, ${horaCO(t)})`).join("; ");
   const sistema = `${CONOCIMIENTO}
 
 DATOS DE LA TIENDA (hoy)
@@ -300,6 +304,7 @@ Hora actual en Colombia: ${horaCO(ahora)} (${enHorario(ahora) ? "dentro" : "FUER
 - Nombre en WhatsApp: ${nombre || "(desconocido)"}
 - País por el número: ${pais.nombre}
 - ¿Ya había escrito antes?: ${previo ? "sí, tiene historial con el negocio" : "no, parece cliente nuevo"}
+- Fotos ya enviadas en este chat: ${fotosTexto || "ninguna"}
 ${campana ? `- Llegó por el anuncio: ${campana}\n` : ""}${audiosFallidos ? `- OJO: ${audiosFallidos} audio(s) del cliente no se pudieron transcribir.\n` : ""}
 HISTORIAL (lo más antiguo arriba; NEGOCIO incluye mensajes de Alexander y del asistente)
 ${hist.slice(-HISTORIAL).map(lineaHistorial).join("\n")}
@@ -310,13 +315,18 @@ Responde al último turno del cliente. Usa las herramientas para cualquier preci
 
   // Enviar
   const texto = String(decision.mensaje || "").trim().slice(0, 1500);
-  const fotos = [...new Set((decision.fotos || []).filter((id) => H.Tienda.PRODUCTOS.some((p) => p.id === id)))].slice(0, MAX_FOTOS);
+  // Fotos: no se repiten las ya enviadas en este chat, salvo que el cliente las pida de nuevo (reenviar_fotos)
+  const pedidas = [...new Set((decision.fotos || []).filter((id) => H.Tienda.PRODUCTOS.some((p) => p.id === id)))];
+  const fotos = (decision.reenviar_fotos ? pedidas : pedidas.filter((id) => !fotosYa[id])).slice(0, MAX_FOTOS);
   const enviados = [];
   if (texto || fotos.length) await s.put("enviandoHasta", Date.now() + 120e3);
   if (texto) enviados.push(await enviarZernio(env, cid, cuenta, { message: texto }));
   for (const id of fotos) {
-    enviados.push(await enviarZernio(env, cid, cuenta, { attachmentUrl: `${H.Tienda.NEGOCIO.sitio}/fotos/${id}/1.jpg`, attachmentType: "image" }).catch(() => ""));
+    const mid = await enviarZernio(env, cid, cuenta, { attachmentUrl: `${H.Tienda.NEGOCIO.sitio}/fotos/${id}/1.jpg`, attachmentType: "image" }).catch(() => null);
+    if (mid !== null) fotosYa[id] = Date.now();
+    enviados.push(mid || "");
   }
+  if (fotos.length) await s.put("fotosEnviadas", fotosYa);
   await s.put("mios", [...mios, ...enviados.filter(Boolean)].slice(-60));
   await s.put("contador", { hora, n: n + 1 });
 
@@ -353,6 +363,7 @@ function lineaHistorial(x) {
   const quien = x.direction === "incoming" ? "CLIENTE" : "NEGOCIO";
   const adj = (x.attachments || []).map((a) => (a.type === "audio"
     ? (x.transcripcion ? `[AUDIO transcrito: "${x.transcripcion}"]` : "[AUDIO sin transcribir]")
+    : x.direction === "outgoing" && a.type === "image" ? "[FOTO enviada]"
     : `[${String(a.type || "adjunto").toUpperCase()} que no puedes ver]`)).join(" ");
   const t = textoDe(x).replace(/^\[unsupported message\]$/i, "[mensaje no soportado]");
   return `[${horaCO(tiempoDe(x))}] ${quien}: ${[adj, t].filter(Boolean).join(" ").slice(0, 600)}`;
@@ -409,12 +420,13 @@ async function avisarTelegram(env, ev, titulo, motivo, resumen, respuesta) {
 function datosTienda(env) {
   const T = H.Tienda, N = T.NEGOCIO, I = T.ENVIO_INTERNACIONAL_USD, aj = T.AJUSTE_EMPAQUE;
   const l = [`Tienda en línea: ${N.sitio}`, `Horario de atención: ${N.horario}`, "Productos (id → descripción | precios en pesos colombianos):"];
+  const desc = (p) => (p.descripcion ? ` Descripción: ${p.descripcion}` : "");
   for (const p of T.PRODUCTOS) {
-    if (p.tipo === "espuela") l.push(`- ${p.id} → ${p.nombre}${p.detalle ? ` (${p.detalle})` : ""}; medidas en líneas: ${p.medidas.join(", ")}; dureza: ${p.dureza || "—"}; precio por par en bolsa: ${T.NIVELES.map((n) => `${n.nombre} ${pesos(p.precios[n.id])}`).join(", ")}`);
-    else if (p.tipo === "patapioja") l.push(`- ${p.id} → ${p.nombre}; colores: ${p.colores.map((c) => c.id).join(", ")}; precio por par: ${p.tramos.map((t) => `desde ${t.desde} pares ${pesos(t.precio)}`).join(", ")}`);
-    else l.push(`- ${p.id} → ${p.nombre}; variantes: ${(p.variantes || []).map((v) => `${v.id} = ${v.nombre} ${v.precio != null ? pesos(v.precio) : `${pesos(v.unidad)} c/u o ${pesos(v.docena)} la docena`}`).join("; ")}`);
+    if (p.tipo === "espuela") l.push(`- ${p.id} → ${p.nombre}${p.detalle ? ` (${p.detalle})` : ""}; medidas en líneas: ${p.medidas.join(", ")}; dureza: ${p.dureza || "—"}; precio por par (bolsa / caja): ${T.NIVELES.map((n) => `${n.nombre} ${pesos(p.precios[n.id] + aj.bolsa)} / ${pesos(p.precios[n.id] + aj.caja)}`).join(", ")}.${desc(p)}`);
+    else if (p.tipo === "patapioja") l.push(`- ${p.id} → ${p.nombre}; colores: ${p.colores.map((c) => c.id).join(", ")}; precio por par: ${p.tramos.map((t) => `desde ${t.desde} pares ${pesos(t.precio)}`).join(", ")}.${desc(p)}`);
+    else l.push(`- ${p.id} → ${p.nombre}; variantes: ${(p.variantes || []).map((v) => `${v.id} = ${v.nombre} ${v.precio != null ? pesos(v.precio) : `${pesos(v.unidad)} c/u o ${pesos(v.docena)} la docena`}`).join("; ")}.${desc(p)}`);
   }
-  l.push(`Presentación de espuelas: bolsa, caja (+${pesos(aj.caja)} por par) o granel (−${pesos(Math.abs(aj.granel))} por par, sin plástico).`);
+  l.push(`Presentaciones de espuela: ${(T.PRESENTACIONES || []).map((x) => `${x.nombre.toLowerCase()} (${x.nota.toLowerCase()}${x.ajuste ? `; ${x.ajuste > 0 ? "+" : "−"}${pesos(Math.abs(x.ajuste))} por par frente a bolsa` : ""})`).join(", ")}.`);
   l.push(`Niveles de espuela según el total de pares: ${T.NIVELES.map((n) => `${n.nombre} desde ${n.desde}`).join(", ")}.`);
   if (T.MINIMO_PARES) l.push(`Pedido mínimo: ${T.MINIMO_PARES.espuela} pares de espuela o ${T.MINIMO_PARES.patapioja} pares de patapioja sintética.`);
   l.push(`Regalo opción A (pares de patapioja sintética según pares de espuela): ${T.REGALOS.map((r) => `${r.pares} desde ${r.desde}`).join(", ")}. Opción B: 1 par de espuela por cada 25 pares de espuela. Una u otra, nunca ambas.`);
@@ -424,6 +436,12 @@ function datosTienda(env) {
   l.push(`NO se envía a: ${Object.values(N.paisesSinEnvio || {}).join(", ")}.`);
   l.push(`Nequi del negocio: ${env.PAGO_NEQUI ? String(env.PAGO_NEQUI).slice(0, 200) : "(no configurado: si piden Nequi, cede)"}`);
   l.push(`Fotos que puedes enviar (ids para el campo fotos): ${T.PRODUCTOS.map((p) => p.id).join(", ")}.`);
+  // Preguntas frecuentes de la tienda, como apoyo. Las de regalos y pagos se omiten: las reglas del agente las cubren mejor.
+  const faq = (T.PREGUNTAS || []).filter((q) => !/regalo|pagar/i.test(q.pregunta));
+  if (faq.length) {
+    l.push("Preguntas frecuentes de la tienda (información de apoyo; si algo choca con las reglas de arriba, mandan las reglas):");
+    for (const q of faq) l.push(`- ${q.pregunta} ${q.respuesta}`);
+  }
   return l.join("\n");
 }
 
@@ -456,8 +474,9 @@ const HERRAMIENTAS = [
       ciudad: { type: "string" }, region: { type: "string", description: "Provincia, departamento o estado" }, postal: { type: "string" } } } },
   { name: "responder", description: "Respuesta final para el cliente. Llámala siempre al terminar.",
     input_schema: { type: "object", required: ["mensaje", "ceder", "avisar", "resumen"], properties: {
-      mensaje: { type: "string", description: "Un solo mensaje de WhatsApp para el cliente" },
-      fotos: { type: "array", items: { type: "string" }, description: "ids de productos cuya foto enviar después del mensaje (máximo 4)" },
+      mensaje: { type: "string", description: "Un solo mensaje de WhatsApp para el cliente: máximo 8 líneas cortas; opciones y precios en lista con \"- \"" },
+      fotos: { type: "array", items: { type: "string" }, description: "ids de productos cuya foto enviar después del mensaje (máximo 4). No incluyas las ya enviadas en este chat" },
+      reenviar_fotos: { type: "boolean", description: "true solo si el cliente pide ver otra vez fotos que ya se le enviaron" },
       ceder: { type: "boolean" }, motivo_cesion: { type: "string" },
       avisar: { type: "boolean" }, motivo_aviso: { type: "string" },
       resumen: { type: "string", description: "Una línea para Alexander: qué quiere el cliente y en qué va" } } } },
@@ -526,10 +545,19 @@ export async function ejecutar(nombre, inp, env, ctx = {}) {
     const pares = C.paresEspuela(limpias), subtotal = Math.round(C.subtotal(limpias));
     const sig = pares ? C.siguienteNivel(pares) : null, regaloA = pares ? C.regaloPara(pares) : null;
     const sigRegalo = T.REGALOS.find((r) => r.desde > pares);
+    // Para dar siempre los dos precios: la misma cotización con todas las espuelas en bolsa y en caja (no cambia el nivel)
+    const esEsp = (l) => (C.prod(l.producto) || {}).tipo === "espuela";
+    const en = (pres) => limpias.map((l) => (esEsp(l) ? { ...l, presentacion: pres } : l));
     const res = {
       ok: true,
-      lineas: limpias.map((l) => { const pr = C.precioLinea(l, limpias); return { producto: C.describirLinea(l).nombre, detalle: C.describirLinea(l).detalle, unitario_cop: pr.unitario, total_cop: pr.total }; }),
+      lineas: limpias.map((l) => {
+        const pr = C.precioLinea(l, limpias), d = C.describirLinea(l);
+        const x = { producto: d.nombre, detalle: d.detalle, unitario_cop: pr.unitario, total_cop: pr.total };
+        if (esEsp(l)) { x.precio_par_bolsa_cop = C.precioLinea({ ...l, presentacion: "bolsa" }, limpias).unitario; x.precio_par_caja_cop = C.precioLinea({ ...l, presentacion: "caja" }, limpias).unitario; }
+        return x;
+      }),
       subtotal_cop: subtotal, pares_espuela: pares, pares_patapioja: C.paresPatapioja(limpias),
+      ...(pares ? { subtotal_todo_en_bolsa_cop: Math.round(C.subtotal(en("bolsa"))), subtotal_todo_en_caja_cop: Math.round(C.subtotal(en("caja"))) } : {}),
       nivel: pares ? C.nivelPara(pares).nombre : null,
       siguiente_nivel: sig ? { nombre: sig.nombre, desde: sig.desde, faltan_pares: sig.desde - pares } : null,
       falta_minimo: C.faltaMinimo ? C.faltaMinimo(limpias) || null : null,

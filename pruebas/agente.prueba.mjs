@@ -291,6 +291,57 @@ await prueba("herramientas: mínimo, regalo, colores, oficina, internacional y E
   assert.equal(usd.subtotal_usd_aprox, 24);
 });
 
+await prueba("precios en bolsa y en caja, forro y preguntas frecuentes llegan al modelo", async () => {
+  const env = nuevoEnv();
+  historial = [{ id: "p1", direction: "incoming", message: "que espuelas maneja", sentAt: new Date().toISOString() }];
+  guion = [responder({ mensaje: "Le manejamos 4 espuelas:\n- *Acrílica amarilla*: bolsa $4.000 · caja $4.300" })];
+  await webhook(env, evento("message.received", { text: historial[0].message, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env).obj.alarm();
+  const sis = alModelo()[0].system;
+  assert.match(sis, /acrilica → .*precio por par \(bolsa \/ caja\): Minorista \$4\.000 \/ \$4\.300/);
+  assert.match(sis, /En bolsa o en caja viene forrada con plástico removible/, "la descripción del producto dice que viene forrada");
+  assert.match(sis, /en bolsa \(forrada con plástico removible\), en caja \(forrada con plástico removible; \+\$300/);
+  assert.match(sis, /¿Las espuelas vienen selladas\?/);
+  assert.ok(!/¿Dan algún regalo\?/.test(sis), "la pregunta frecuente del regalo (solo opción A) no se manda");
+  const c = await ejecutar("cotizar_productos", { lineas: [{ producto: "acrilica", cantidad: 24, medida: 40 }, { producto: "patapioja", cantidad: 12, color: "negra" }] }, env);
+  assert.equal(c.lineas[0].precio_par_bolsa_cop, 4000); assert.equal(c.lineas[0].precio_par_caja_cop, 4300);
+  assert.equal(c.lineas[1].precio_par_bolsa_cop, undefined, "la patapioja no tiene presentación");
+  assert.equal(c.subtotal_todo_en_caja_cop - c.subtotal_todo_en_bolsa_cop, 24 * 300);
+  assert.equal(c.subtotal_cop, c.subtotal_todo_en_bolsa_cop);
+});
+
+await prueba("fotos: no repite las ya enviadas, salvo que el cliente las pida", async () => {
+  const env = nuevoEnv();
+  const t0 = Date.now() - 60000;
+  historial = [{ id: "f1", direction: "incoming", message: "precio de la amarilla", sentAt: new Date(t0).toISOString() }];
+  guion = [responder({ mensaje: "Claro mi amigo.", fotos: ["acrilica"] })];
+  await webhook(env, evento("message.received", { text: historial[0].message, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env).obj.alarm();
+  assert.equal(envios().filter((e) => e.attachmentUrl).length, 1);
+
+  // Segundo turno: el modelo vuelve a pedir la acrílica y agrega la negra → solo sale la negra
+  llamadas = []; nEnv = 2;
+  historial.push(
+    { id: "f2", direction: "outgoing", message: "Claro mi amigo.", sentVia: "api", sentAt: new Date(t0 + 9000).toISOString() },
+    { id: "f3", direction: "outgoing", message: "", attachments: [{ type: "image", url: "https://ingenieroespuelistico.com/fotos/acrilica/1.jpg" }], sentVia: "api", sentAt: new Date(t0 + 10000).toISOString() },
+    { id: "f4", direction: "incoming", message: "y la negra?", sentAt: new Date().toISOString() });
+  guion = [responder({ mensaje: "Esta es la negra.", fotos: ["acrilica", "negra-casquillo"] })];
+  await webhook(env, evento("message.received", { text: "y la negra?", sender: { phoneNumber: "+" + TEL }, sentAt: historial[3].sentAt }));
+  await chat(env).obj.alarm();
+  const pedido = alModelo()[0].messages[0].content;
+  assert.match(pedido, /Fotos ya enviadas en este chat: Espuela acrílica amarilla \(id acrilica/);
+  assert.match(pedido, /NEGOCIO: \[FOTO enviada\]/);
+  assert.deepEqual(envios().filter((e) => e.attachmentUrl).map((e) => e.attachmentUrl), ["https://ingenieroespuelistico.com/fotos/negra-casquillo/1.jpg"]);
+
+  // Tercer turno: el cliente pide otra vez la foto → reenviar_fotos la deja pasar
+  llamadas = [];
+  historial.push({ id: "f5", direction: "incoming", message: "mándeme otra vez la foto de la amarilla", sentAt: new Date(Date.now() + 1000).toISOString() });
+  guion = [responder({ mensaje: "Con gusto.", fotos: ["acrilica"], reenviar_fotos: true })];
+  await webhook(env, evento("message.received", { text: historial.at(-1).message, sender: { phoneNumber: "+" + TEL }, sentAt: historial.at(-1).sentAt }));
+  await chat(env).obj.alarm();
+  assert.deepEqual(envios().filter((e) => e.attachmentUrl).map((e) => e.attachmentUrl), ["https://ingenieroespuelistico.com/fotos/acrilica/1.jpg"]);
+});
+
 await prueba("país por número", async () => {
   assert.equal(paisPorNumero("+593 99 123 4567").iso, "EC"); assert.equal(paisPorNumero("+58 412 1234567").iso, "VE");
   assert.equal(paisPorNumero("+1 787 555 0000").iso, "PR"); assert.equal(paisPorNumero("+1 305 555 0000").iso, "");
