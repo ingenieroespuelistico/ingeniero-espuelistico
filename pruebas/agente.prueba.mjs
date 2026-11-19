@@ -109,6 +109,42 @@ await prueba("diagnóstico: pide clave y explica por qué no respondió", async 
   assert.ok(!JSON.stringify(r).includes("hola"), "el diagnóstico no guarda el texto de los mensajes");
 });
 
+await prueba("liberar chats de prueba: después de responder tú, se puede volver a probar", async () => {
+  const env = nuevoEnv({ AGENTE_ACTIVO: "prueba", AGENTE_NUMEROS_PRUEBA: TEL, SALUD_CLAVE: "c1" });
+  historial = [
+    { id: "a1", direction: "outgoing", message: "hola, prueba", sentAt: new Date(Date.now() - 3600e3).toISOString(), metadata: { source: "whatsapp_business_app" } },
+    { id: "a2", direction: "incoming", message: "precio?", sentAt: new Date(Date.now() - 1000).toISOString() }];
+  await webhook(env, evento("message.received", { text: "precio?", sender: { phoneNumber: "+" + TEL }, sentAt: historial[1].sentAt }));
+  await chat(env).obj.alarm();
+  assert.equal(envios().length, 0, "bloqueado por el mensaje tuyo de hace una hora");
+  let r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c1"), env, ctx)).json();
+  assert.ok(r.ultimasDecisiones.some((e) => e.mensajeQueBloquea && e.mensajeQueBloquea.origen === "whatsapp_business_app"));
+  assert.ok(r.ultimasDecisiones.every((e) => !("cid" in e)), "el diagnóstico no muestra el id completo del chat");
+  r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c1&liberarPrueba=1"), env, ctx)).json();
+  assert.equal(r.liberados, 1);
+  historial.push({ id: "a3", direction: "incoming", message: "precio de las espuelas?", sentAt: new Date().toISOString() });
+  guion = [responder({ mensaje: "Claro que sí mi amigo." })];
+  await webhook(env, evento("message.received", { text: "precio de las espuelas?", sender: { phoneNumber: "+" + TEL }, sentAt: historial[2].sentAt }));
+  await chat(env).obj.alarm();
+  assert.equal(envios().length, 1, "después de liberar, responde");
+});
+
+await prueba("mensaje automático de la app (segundos después del cliente) no bloquea", async () => {
+  const env = nuevoEnv();
+  const t0 = Date.now() - 5000;
+  await webhook(env, evento("message.received", { text: "hola", sender: { phoneNumber: "+" + TEL }, sentAt: new Date(t0).toISOString() }));
+  await webhook(env, evento("message.sent", { id: "auto1", direction: "outgoing", text: "¡Hola! Gracias por escribirnos", source: "whatsapp_business_app", sentAt: new Date(t0 + 1500).toISOString() }));
+  assert.equal(await chat(env).st.get("humanoHasta"), undefined, "por webhook");
+  historial = [
+    { id: "b1", direction: "incoming", message: "hola", sentAt: new Date(t0).toISOString() },
+    { id: "b2", direction: "outgoing", message: "¡Hola! Gracias por escribirnos", sentAt: new Date(t0 + 1500).toISOString(), metadata: { source: "whatsapp_business_app" } },
+    { id: "b3", direction: "incoming", message: "precio?", sentAt: new Date().toISOString() }];
+  guion = [responder({ mensaje: "Con gusto mi amigo." })];
+  await webhook(env, evento("message.received", { text: "precio?", sender: { phoneNumber: "+" + TEL }, sentAt: historial[2].sentAt }));
+  await chat(env).obj.alarm();
+  assert.equal(envios().length, 1, "por historial: la bienvenida automática no cuenta como Alexander");
+});
+
 await prueba("aviso repetido de Zernio se procesa una sola vez", async () => {
   const env = nuevoEnv(), ev = evento("message.received", { text: "hola", sender: { phoneNumber: "+" + TEL } });
   await webhook(env, ev); await chat(env).st.delete("pendiente");
@@ -157,8 +193,8 @@ await prueba("los mensajes del propio agente no lo silencian", async () => {
 
 await prueba("si Alexander escribe desde el celular, el agente se calla y cancela la respuesta pendiente", async () => {
   const env = nuevoEnv();
-  await webhook(env, evento("message.received", { text: "hola", sender: { phoneNumber: "+" + TEL } }));
-  await webhook(env, evento("message.sent", { id: "z2", platformMessageId: "wamid.ALEX", direction: "outgoing", text: "Buenas tardes mi amigo", source: "whatsapp_business_app" }));
+  await webhook(env, evento("message.received", { text: "hola", sender: { phoneNumber: "+" + TEL }, sentAt: new Date(Date.now() - 20000).toISOString() }));
+  await webhook(env, evento("message.sent", { id: "z2", platformMessageId: "wamid.ALEX", direction: "outgoing", text: "Buenas tardes mi amigo", source: "whatsapp_business_app", sentAt: new Date(Date.now() - 5000).toISOString() }));
   const st = chat(env).st;
   assert.ok((await st.get("humanoHasta")) > Date.now());
   assert.equal(st._a.alarma, null);
