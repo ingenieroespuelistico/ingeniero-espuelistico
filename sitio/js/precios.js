@@ -19,8 +19,7 @@ const PRECIOS = {
   "negra-enteriza":  { minorista: 3800, mayorista: 3600, distribuidor: 3300, gran_distribuidor: 3000 }, // Espuela negra enteriza
 
   /* ---------- PATAPIOJA SINTÉTICA: precio por PAR desde cierta cantidad de pares ---------- */
-  "patapioja": [
-    { desde: 1,   precio: 2000 },
+  "patapioja": [                     // pedido mínimo: 1 docena (ver MINIMO_PARES en datos.js)
     { desde: 12,  precio: 1500 },     // docena a 18.000
     { desde: 72,  precio: 1333.33 },  // desde 6 docenas, la docena a 16.000
     { desde: 100, precio: 1300 },

@@ -417,6 +417,8 @@ function idPedido() {
 async function crearPedido(cuerpo, url, env, request) {
   const lineas = lineasLimpias(cuerpo.pedido);
   if (!lineas) return error("El pedido no es válido. Recarga la página e intenta de nuevo.");
+  const faltaMin = C.faltaMinimo(lineas);
+  if (faltaMin) return error(faltaMin);
   const c = cuerpo.cliente || {};
   const cliente = {
     nombre: texto(c.nombre, 80), documento: texto(c.documento, 20).replace(/[^0-9A-Za-z-]/g, ""),
@@ -641,6 +643,8 @@ async function crearPedidoPaypal(cuerpo, url, env, request) {
   if (!Tienda.PAYPAL.activo || !paypalListo(env)) return error("El pago con PayPal todavía no está disponible. Escríbenos por WhatsApp.", 503);
   const lineas = lineasLimpias(cuerpo.pedido);
   if (!lineas) return error("El pedido no es válido. Recarga la página e intenta de nuevo.");
+  const faltaMinPP = C.faltaMinimo(lineas);
+  if (faltaMinPP) return error(faltaMinPP);
   const c = cuerpo.cliente || {};
   const cliente = {
     nombre: texto(c.nombre, 80), documento: texto(c.documento, 20).replace(/[^0-9A-Za-z-]/g, ""),

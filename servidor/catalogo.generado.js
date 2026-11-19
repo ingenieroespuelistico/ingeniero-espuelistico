@@ -222,8 +222,7 @@ const PRECIOS = {
   "negra-enteriza":  { minorista: 3800, mayorista: 3600, distribuidor: 3300, gran_distribuidor: 3000 }, // Espuela negra enteriza
 
   /* ---------- PATAPIOJA SINTÉTICA: precio por PAR desde cierta cantidad de pares ---------- */
-  "patapioja": [
-    { desde: 1,   precio: 2000 },
+  "patapioja": [                     // pedido mínimo: 1 docena (ver MINIMO_PARES en datos.js)
     { desde: 12,  precio: 1500 },     // docena a 18.000
     { desde: 72,  precio: 1333.33 },  // desde 6 docenas, la docena a 16.000
     { desde: 100, precio: 1300 },
@@ -369,7 +368,7 @@ const AGENDA = {
 
 // Niveles de precio de espuelas: se calculan con el total de pares de espuela del pedido.
 const NIVELES = [
-  { id: "minorista", nombre: "Minorista", desde: 1 },
+  { id: "minorista", nombre: "Minorista", desde: 12 }, // igual al pedido mínimo de espuelas
   { id: "mayorista", nombre: "Mayorista", desde: 120 },
   { id: "distribuidor", nombre: "Distribuidor", desde: 500 },
   { id: "gran_distribuidor", nombre: "Gran distribuidor", desde: 1200 },
@@ -384,6 +383,10 @@ const PRESENTACIONES = [
 const PULGADAS = { 30: "1.2", 35: "1.4", 38: "1.5", 40: "1.6", 42: "1.7", 43: "1.7" };
 
 // Regalo en pares de patapioja sintética según pares de espuela
+// Pedido mínimo en pares. Espuelas: total del pedido (se mezclan referencias y medidas).
+// Patapioja sintética: total del pedido (se mezclan colores). Cera, esparadrapo y metálica no tienen mínimo.
+const MINIMO_PARES = { espuela: 12, patapioja: 12 };
+
 const REGALOS = [
   { desde: 50, pares: 6 },
   { desde: 100, pares: 12 },
@@ -418,7 +421,15 @@ const FICHAS = Object.fromEntries(PRODUCTOS.map((p) => [p.id, { descripcion: p.d
   const siguienteNivel = (pares) => NIVELES.find((n) => n.desde > pares);
   const paresEspuela = (lista) => lista.filter((l) => prod(l.producto).tipo === "espuela").reduce((s, l) => s + l.cantidad, 0);
   const paresPatapioja = (lista) => lista.filter((l) => l.producto === "patapioja").reduce((s, l) => s + l.cantidad, 0);
-  const precioParPatapioja = (pares) => [...prod("patapioja").tramos].reverse().find((t) => pares >= t.desde).precio;
+  const precioParPatapioja = (pares) => ([...prod("patapioja").tramos].reverse().find((t) => pares >= t.desde) || prod("patapioja").tramos[0]).precio;
+  // Pedido mínimo: devuelve el mensaje para el cliente, o "" si el pedido lo cumple
+  function faltaMinimo(lista) {
+    const m = (typeof MINIMO_PARES !== "undefined" && MINIMO_PARES) || {};
+    const e = paresEspuela(lista), p = paresPatapioja(lista);
+    if (m.espuela && e > 0 && e < m.espuela) return `El pedido mínimo de espuelas es de ${m.espuela} pares (puedes mezclar referencias y medidas). Te faltan ${m.espuela - e}.`;
+    if (m.patapioja && p > 0 && p < m.patapioja) return `La patapioja sintética se vende desde una docena (${m.patapioja} pares, puedes mezclar colores). Te faltan ${m.patapioja - p}.`;
+    return "";
+  }
 
   function precioLinea(l, lista) {
     const p = prod(l.producto);
@@ -522,7 +533,7 @@ const FICHAS = Object.fromEntries(PRODUCTOS.map((p) => [p.id, { descripcion: p.d
 
   g.Calculo = {
     prod, MAX_CANTIDAD, nivelPara, siguienteNivel, paresEspuela, paresPatapioja, precioParPatapioja,
-    precioLinea, subtotal, pesoGramos, regaloPara, describirLinea, lineaValida, limpiarLinea,
+    precioLinea, subtotal, pesoGramos, regaloPara, describirLinea, lineaValida, limpiarLinea, faltaMinimo,
     tieneTarifaInternacional, envioInternacionalUSD, horasAgenda, instanteColombia,
   };
 })(typeof window !== "undefined" ? window : globalThis);
@@ -541,6 +552,10 @@ const PREGUNTAS = [
   {
     pregunta: "¿Cómo funciona el precio por cantidad?",
     respuesta: "El precio por par baja según el total de pares de espuela de tu pedido, aunque mezcles referencias y medidas: minorista hasta 119 pares, mayorista de 120 a 499, distribuidor de 500 a 1.199 y gran distribuidor desde 1.200. Las patapiojas tienen su propia tabla y no se suman con las espuelas.",
+  },
+  {
+    pregunta: "¿Cuál es el pedido mínimo?",
+    respuesta: `${MINIMO_PARES.espuela} pares de espuela, que puedes mezclar entre referencias y medidas, o una docena de patapioja sintética, que puedes mezclar entre colores. La cera, el esparadrapo y la patapioja metálica no tienen mínimo.`,
   },
   {
     pregunta: "¿Las espuelas vienen selladas?",
@@ -579,5 +594,5 @@ const PREGUNTAS = [
 
 export const Tienda = {
   PRODUCTOS, PRECIOS, AJUSTE_EMPAQUE, CONTRAENTREGA_MINIMO, CUOTAS_SIN_INTERES, ENVIO_INTERNACIONAL_USD, ENVIO_NACIONAL,
-  NIVELES, PRESENTACIONES, REGALOS, PULGADAS, NEGOCIO, PREGUNTAS, PAYPAL, TASAS_RESPALDO, AGENDA, Calculo: window.Calculo,
+  NIVELES, PRESENTACIONES, REGALOS, MINIMO_PARES, PULGADAS, NEGOCIO, PREGUNTAS, PAYPAL, TASAS_RESPALDO, AGENDA, Calculo: window.Calculo,
 };

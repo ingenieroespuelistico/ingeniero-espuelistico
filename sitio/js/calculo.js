@@ -11,7 +11,15 @@
   const siguienteNivel = (pares) => NIVELES.find((n) => n.desde > pares);
   const paresEspuela = (lista) => lista.filter((l) => prod(l.producto).tipo === "espuela").reduce((s, l) => s + l.cantidad, 0);
   const paresPatapioja = (lista) => lista.filter((l) => l.producto === "patapioja").reduce((s, l) => s + l.cantidad, 0);
-  const precioParPatapioja = (pares) => [...prod("patapioja").tramos].reverse().find((t) => pares >= t.desde).precio;
+  const precioParPatapioja = (pares) => ([...prod("patapioja").tramos].reverse().find((t) => pares >= t.desde) || prod("patapioja").tramos[0]).precio;
+  // Pedido mínimo: devuelve el mensaje para el cliente, o "" si el pedido lo cumple
+  function faltaMinimo(lista) {
+    const m = (typeof MINIMO_PARES !== "undefined" && MINIMO_PARES) || {};
+    const e = paresEspuela(lista), p = paresPatapioja(lista);
+    if (m.espuela && e > 0 && e < m.espuela) return `El pedido mínimo de espuelas es de ${m.espuela} pares (puedes mezclar referencias y medidas). Te faltan ${m.espuela - e}.`;
+    if (m.patapioja && p > 0 && p < m.patapioja) return `La patapioja sintética se vende desde una docena (${m.patapioja} pares, puedes mezclar colores). Te faltan ${m.patapioja - p}.`;
+    return "";
+  }
 
   function precioLinea(l, lista) {
     const p = prod(l.producto);
@@ -115,7 +123,7 @@
 
   g.Calculo = {
     prod, MAX_CANTIDAD, nivelPara, siguienteNivel, paresEspuela, paresPatapioja, precioParPatapioja,
-    precioLinea, subtotal, pesoGramos, regaloPara, describirLinea, lineaValida, limpiarLinea,
+    precioLinea, subtotal, pesoGramos, regaloPara, describirLinea, lineaValida, limpiarLinea, faltaMinimo,
     tieneTarifaInternacional, envioInternacionalUSD, horasAgenda, instanteColombia,
   };
 })(typeof window !== "undefined" ? window : globalThis);
