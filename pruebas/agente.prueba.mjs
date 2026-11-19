@@ -26,6 +26,8 @@ globalThis.fetch = async (url, op = {}) => {
     { service: "mensajeria_do", totalPrice: 11800, carrierDescription: "Interrapidísimo", serviceDescription: "Domicilio - Oficina", carrier: "interRapidisimo" }] });
   if (url.startsWith("https://open.er-api.com/")) return J({ rates: { COP: 4000 } });
   if (url.startsWith("https://media.prueba/")) return new Response(new Uint8Array(4000));
+  if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/medjson")) return J({ url: "https://media.prueba/c.ogg" });
+  if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/medogg")) { const b = new Uint8Array(8000); b.set([79, 103, 103, 83]); return new Response(b, { headers: { "content-type": "application/octet-stream" } }); }
   if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/")) return (op.headers || {}).Authorization === "Bearer sk_prueba"
     ? new Response(new Uint8Array(6000), { headers: { "content-type": "audio/ogg" } }) : J({ code: "missing_credentials" }, 401);
   return J({ error: "no simulado: " + url }, 404);
@@ -279,7 +281,7 @@ await prueba("audio de WhatsApp: se descarga de Zernio con su id y la clave (y l
   assert.match(alModelo()[0].messages[0].content, /AUDIO transcrito: "quiero 24 pares/, "una nota marcada como voice también se entiende");
   assert.ok(!llamadas.some((l) => l.url.includes("lookaside.prueba")), "con la descarga de Zernio basta");
   const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c4"), env, ctx)).json();
-  assert.match(r.ultimasDecisiones.find((e) => e.herramientas).herramientas[0], /audio \(tipo=voice formato=audio\/ogg.*\): transcrito \(media 200, 6 KB/);
+  assert.match(r.ultimasDecisiones.find((e) => e.herramientas).herramientas[0], /audio \(tipo=voice formato=audio\/ogg.*\): transcrito con Whisper turbo \(media 200, 6 KB/);
 
   // Sin id: se usa la url, y la clave de Zernio NO se manda a un sitio que no es Zernio
   reiniciar();
@@ -307,7 +309,38 @@ await prueba("audio que no se puede escuchar: le pasa el chat a Alexander sin pr
   const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c5"), env, ctx)).json();
   const d = r.ultimasDecisiones.find((x) => x.herramientas);
   assert.match(d.decision, /cedió a Alexander: audio/);
-  assert.match(d.herramientas[0], /no se pudo pasar a texto: turbo falló: formato no soportado; respaldo falló: formato no soportado/);
+  assert.match(d.herramientas[0], /no se pudo pasar a texto: turbo falló: formato no soportado; nova falló: formato no soportado; nova sin idioma falló: formato no soportado; respaldo falló: formato no soportado/);
+});
+
+await prueba("nota de voz OGG que Whisper no entiende: la transcribe Deepgram Nova-3 con el tipo de archivo", async () => {
+  const usados = [];
+  const AI = { run: async (modelo, ent) => { usados.push({ modelo, ent });
+    if (modelo === "@cf/deepgram/nova-3") return { results: { channels: [{ alternatives: [{ transcript: "quiero 50 pares de la negra en 40" }] }] } };
+    throw new Error("no se pudo decodificar"); } };
+  const env = nuevoEnv({ AI, SALUD_CLAVE: "c6" });
+  const adj = [{ type: "audio", payload: { id: "medogg" } }];
+  historial = [{ id: "v6", direction: "incoming", message: "", attachments: [{ type: "audio" }], sentAt: new Date().toISOString() }]; // el historial llega sin id
+  guion = [responder({ mensaje: "Listo don." })];
+  await webhook(env, evento("message.received", { text: "", attachments: adj, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env).obj.alarm();
+  assert.ok(llamadas.some((l) => l.url.includes("/whatsapp/media/medogg")), "usa el id que trae el aviso de Zernio");
+  const nova = usados.find((u) => u.modelo === "@cf/deepgram/nova-3");
+  assert.equal(nova.ent.audio.contentType, "audio/ogg", "reconoce el formato por los primeros bytes");
+  assert.match(alModelo()[0].messages[0].content, /AUDIO transcrito: "quiero 50 pares de la negra en 40"/);
+  const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c6"), env, ctx)).json();
+  assert.match(r.ultimasDecisiones.find((e) => e.herramientas).herramientas[0], /transcrito con Nova-3 \(audio\/ogg\).*firma OggS.*antes: turbo falló/);
+
+  // Si Zernio responde con un enlace en vez del audio, se sigue el enlace
+  reiniciar();
+  const env2 = nuevoEnv();
+  const adj2 = [{ type: "audio", payload: { id: "medjson" } }];
+  historial = [{ id: "v7", direction: "incoming", message: "", attachments: adj2, sentAt: new Date().toISOString() }];
+  guion = [responder({ mensaje: "Listo." })];
+  await webhook(env2, evento("message.received", { text: "", attachments: adj2, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env2).obj.alarm();
+  const enlace = llamadas.find((l) => l.url === "https://media.prueba/c.ogg");
+  assert.ok(enlace && !(enlace.cabeceras || {}).Authorization);
+  assert.match(alModelo()[0].messages[0].content, /AUDIO transcrito/);
 });
 
 await prueba("herramientas: mínimo, regalo, colores, oficina, internacional y EE. UU.", async () => {

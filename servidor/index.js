@@ -25,7 +25,7 @@ import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 import { atenderWhatsApp, diagnosticoWhatsApp, conectarAgente, modoAgente, ConversacionWA } from "./agente.js";
 
-const VERSION = "2026-11-19.4";
+const VERSION = "2026-11-19.5";
 const C = Tienda.Calculo;
 
 // Agente de WhatsApp: la "memoria" de cada chat (Durable Object) se exporta aquí y usa las mismas
