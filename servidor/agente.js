@@ -28,7 +28,8 @@ const ZERNIO = "https://zernio.com/api/v1";
 const ANTHROPIC = "https://api.anthropic.com/v1/messages";
 const MODELO_DEFECTO = "claude-sonnet-5-5";
 const MODELO_VOZ = "@cf/openai/whisper-large-v3-turbo";
-const MODELO_VOZ_RESPALDO = "@cf/openai/whisper"; // si el turbo no puede con el formato de la nota de voz
+const MODELO_VOZ_NOVA = "@cf/deepgram/nova-3";      // recibe el tipo de archivo: entiende notas de voz OGG/Opus
+const MODELO_VOZ_RESPALDO = "@cf/openai/whisper";    // último intento
 const ESPERA_MS = 7000;             // espera para juntar mensajes seguidos del cliente
 const HUMANO_HORAS = 12;            // tras escribir Alexander (o tras ceder), el agente calla
 const MAX_RONDAS = 4;               // vueltas de herramientas por respuesta
@@ -294,6 +295,14 @@ async function atender(ev, env, s) {
   const idxSal = hist.map((x) => x.direction).lastIndexOf("outgoing");
   const turno = hist.slice(idxSal + 1).filter((x) => x.direction === "incoming");
   let audiosFallidos = 0, transcritos = 0;
+  // El aviso de Zernio puede traer el audio más completo (con su id) que el historial: se combinan
+  const audioAviso = (m.attachments || []).find(esAudio);
+  const xEste = audioAviso && turno.find((x) => Math.abs(tiempoDe(x) - tEste) < 3000);
+  if (xEste) {
+    const h = (xEste.attachments || []).find(esAudio);
+    if (!h) xEste.attachments = [...(xEste.attachments || []), audioAviso];
+    else if (!((h.payload || {}).id) && (audioAviso.payload || {}).id) Object.assign(h, { payload: { ...(h.payload || {}), ...audioAviso.payload }, url: h.url || audioAviso.url });
+  }
   for (const x of turno) {
     const a = (x.attachments || []).find(esAudio);
     if (!a) {
@@ -437,42 +446,76 @@ function describirAdjunto(a) {
 async function transcribir(env, a, cuenta) {
   if (!env.AI) return { texto: "", detalle: "falta el enlace AI (Workers AI) en el Worker" };
   const clave = { Authorization: `Bearer ${env.ZERNIO_API_KEY}` };
-  const id = (a.payload || {}).id || a.mediaId || "";
+  const p = a.payload || {};
   const esZernio = (u) => { try { const h = new URL(u).hostname; return h === "zernio.com" || h.endsWith(".zernio.com"); } catch { return false; } };
+  const ids = [...new Set([p.id, p.mediaId, p.media_id, a.mediaId, a.media_id, a.id].filter((x) => x && /^[\w.:=-]{4,300}$/.test(String(x))).map(String))];
   const intentos = [];
-  if (id && cuenta) intentos.push({ nombre: "media", url: `${ZERNIO}/whatsapp/media/${encodeURIComponent(id)}?accountId=${encodeURIComponent(cuenta)}`, headers: clave });
-  if (a.url) intentos.push({ nombre: "url", url: a.url, headers: esZernio(a.url) ? clave : {} });
+  if (cuenta) for (const id of ids) intentos.push({ nombre: "media", url: `${ZERNIO}/whatsapp/media/${encodeURIComponent(id)}?accountId=${encodeURIComponent(cuenta)}`, headers: clave });
+  for (const u of [...new Set([a.url, p.url, p.link].filter((x) => typeof x === "string" && /^https:\/\//.test(x)))]) intentos.push({ nombre: "url", url: u, headers: esZernio(u) ? clave : {} });
   if (!intentos.length) return { texto: "", detalle: "el adjunto no trae id ni url" };
   const notas = [];
   let buf = null, formato = "";
-  for (const i of intentos) {
-    const r = await fetch(i.url, { headers: i.headers, signal: AbortSignal.timeout(15000) }).catch((e) => ({ ok: false, status: "sin conexión" }));
+  for (let k = 0; k < intentos.length && k < 8; k++) {
+    const i = intentos[k];
+    const r = await fetch(i.url, { headers: i.headers, signal: AbortSignal.timeout(15000) }).catch(() => ({ ok: false, status: "sin conexión" }));
+    const ct = (r.headers && r.headers.get("content-type")) || "";
+    if (r.ok && /json/i.test(ct)) { // algunas respuestas traen un enlace en vez del audio: se sigue ese enlace
+      const j = await r.json().catch(() => null);
+      const sig = j && [j.url, j.downloadUrl, j.download_url, (j.data || {}).url].find((x) => typeof x === "string" && /^https:\/\//.test(x));
+      notas.push(`${i.nombre} 200 json${sig ? " con enlace" : " sin audio"}`);
+      if (sig) intentos.push({ nombre: "enlace", url: sig, headers: esZernio(sig) ? clave : {} });
+      continue;
+    }
     notas.push(`${i.nombre} ${r.status}`);
-    if (r.ok) { buf = await r.arrayBuffer(); formato = (r.headers && r.headers.get("content-type")) || ""; break; }
+    if (r.ok) { buf = await r.arrayBuffer(); formato = ct; break; }
   }
   if (!buf) return { texto: "", detalle: `no se pudo descargar (${notas.join(", ")})` };
-  const kb = Math.round(buf.byteLength / 1024);
-  if (buf.byteLength < 500 || buf.byteLength > 8 * 1024 * 1024) return { texto: "", detalle: `descargado (${notas.join(", ")}) pero mide ${kb} KB` };
-  const fallos = [];
-  // 1) Whisper turbo (español, con filtro de voz). 2) Si falla o no entiende nada, Whisper clásico, que recibe los bytes tal cual.
+  const kb = Math.round(buf.byteLength / 1024), firma = firmaAudio(buf);
+  const datos = `${notas.join(", ")}, ${kb} KB, ${formato || "formato ?"}, firma ${firma || "?"}`;
+  if (buf.byteLength < 500 || buf.byteLength > 8 * 1024 * 1024) return { texto: "", detalle: `descargado (${datos}) pero el tamaño no sirve` };
+  const tipo = /^audio\//i.test(formato) ? formato.split(";")[0] : TIPO_POR_FIRMA[firma] || String(a.mimeType || p.mimeType || "audio/ogg").split(";")[0];
+  const b64 = aBase64(buf), fallos = [];
+  const listo = (texto, con) => ({ texto: String(texto || "").trim().slice(0, 1000), detalle: `transcrito con ${con} (${datos})${fallos.length ? "; antes: " + fallos.join("; ") : ""}` });
+  // 1) Whisper turbo. 2) Deepgram Nova-3, que recibe el tipo de archivo (sirve para notas de voz OGG/Opus). 3) Whisper clásico.
   try {
-    const out = await env.AI.run(MODELO_VOZ, {
-      audio: aBase64(buf), language: "es", vad_filter: true,
-      initial_prompt: "Cliente preguntando por espuelas para gallos, patapiojas, líneas, pares, docenas, envío, Interrapidísimo, contraentrega, Nequi.",
-    });
-    const texto = String((out && out.text) || "").trim().slice(0, 1000);
-    if (texto) return { texto, detalle: `transcrito (${notas.join(", ")}, ${kb} KB, ${texto.length} caracteres)` };
+    const out = await env.AI.run(MODELO_VOZ, { audio: b64, language: "es", vad_filter: true,
+      initial_prompt: "Cliente preguntando por espuelas para gallos, patapiojas, líneas, pares, docenas, envío, Interrapidísimo, contraentrega, Nequi." });
+    if (String((out && out.text) || "").trim()) return listo(out.text, "Whisper turbo");
     fallos.push("turbo no entendió nada");
   } catch (e) { fallos.push("turbo falló: " + String((e && e.message) || e).slice(0, 100)); }
+  for (const extra of [{ language: "es" }, {}]) {
+    try {
+      const out = await env.AI.run(MODELO_VOZ_NOVA, { audio: { body: b64, contentType: tipo }, ...extra });
+      const alt = ((((out || {}).results || {}).channels || [])[0] || {}).alternatives || [];
+      const texto = (alt[0] || {}).transcript || "";
+      if (String(texto).trim()) return listo(texto, `Nova-3 (${tipo})`);
+      fallos.push("nova no entendió nada"); break;
+    } catch (e) { fallos.push(`nova${extra.language ? "" : " sin idioma"} falló: ` + String((e && e.message) || e).slice(0, 100)); }
+  }
   if (buf.byteLength <= 4 * 1024 * 1024) {
     try {
       const out = await env.AI.run(MODELO_VOZ_RESPALDO, { audio: [...new Uint8Array(buf)] });
-      const texto = String((out && out.text) || "").trim().slice(0, 1000);
-      if (texto) return { texto, detalle: `transcrito con el respaldo (${notas.join(", ")}, ${kb} KB, ${texto.length} caracteres; ${fallos.join("; ")})` };
+      if (String((out && out.text) || "").trim()) return listo(out.text, "Whisper clásico");
       fallos.push("respaldo no entendió nada");
     } catch (e) { fallos.push("respaldo falló: " + String((e && e.message) || e).slice(0, 100)); }
   }
-  return { texto: "", detalle: `descargado (${notas.join(", ")}, ${kb} KB, ${formato || "formato ?"}) pero no se pudo pasar a texto: ${fallos.join("; ")}` };
+  return { texto: "", detalle: `descargado (${datos}) pero no se pudo pasar a texto: ${fallos.join("; ")}` };
+}
+
+// Los primeros bytes dicen el formato real del archivo
+const TIPO_POR_FIRMA = { OggS: "audio/ogg", RIFF: "audio/wav", ID3: "audio/mpeg", MP3: "audio/mpeg", ftyp: "audio/mp4", WebM: "audio/webm", fLaC: "audio/flac", AMR: "audio/amr" };
+function firmaAudio(buf) {
+  const b = new Uint8Array(buf.slice(0, 12)), txt = (i, n) => String.fromCharCode(...b.slice(i, i + n));
+  if (txt(0, 4) === "OggS") return "OggS";
+  if (txt(0, 4) === "RIFF") return "RIFF";
+  if (txt(0, 3) === "ID3") return "ID3";
+  if (b[0] === 0xff && (b[1] & 0xe0) === 0xe0) return "MP3";
+  if (txt(4, 4) === "ftyp") return "ftyp";
+  if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "WebM";
+  if (txt(0, 4) === "fLaC") return "fLaC";
+  if (txt(0, 5) === "#!AMR") return "AMR";
+  if (b[0] === 0x7b || b[0] === 0x3c) return "texto (no es audio)";
+  return "";
 }
 
 async function avisarTelegram(env, ev, titulo, motivo, resumen, respuesta) {
