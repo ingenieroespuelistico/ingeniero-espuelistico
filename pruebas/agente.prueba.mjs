@@ -26,6 +26,7 @@ globalThis.fetch = async (url, op = {}) => {
     { service: "mensajeria_do", totalPrice: 11800, carrierDescription: "Interrapidísimo", serviceDescription: "Domicilio - Oficina", carrier: "interRapidisimo" }] });
   if (url.startsWith("https://open.er-api.com/")) return J({ rates: { COP: 4000 } });
   if (url.startsWith("https://media.prueba/")) return new Response(new Uint8Array(4000));
+  if (url.startsWith("https://lento.prueba/")) throw new TypeError("Network connection lost");
   if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/medjson")) return J({ url: "https://media.prueba/c.ogg" });
   if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/medogg")) { const b = new Uint8Array(8000); b.set([79, 103, 103, 83]); return new Response(b, { headers: { "content-type": "application/octet-stream" } }); }
   if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/")) return (op.headers || {}).Authorization === "Bearer sk_prueba"
@@ -341,6 +342,31 @@ await prueba("nota de voz OGG que Whisper no entiende: la transcribe Deepgram No
   const enlace = llamadas.find((l) => l.url === "https://media.prueba/c.ogg");
   assert.ok(enlace && !(enlace.cabeceras || {}).Authorization);
   assert.match(alModelo()[0].messages[0].content, /AUDIO transcrito/);
+});
+
+await prueba("audio sin id con enlace incompleto (/api/v1/...): se completa con zernio.com y se descarga", async () => {
+  const env = nuevoEnv({ SALUD_CLAVE: "c7" });
+  const adj = [{ type: "audio", mimeType: "audio/ogg; codecs=opus", url: "/api/v1/whatsapp/media/wamidAUDIO123456?accountId=cuenta1" }];
+  historial = [{ id: "v8", direction: "incoming", message: "", attachments: adj, sentAt: new Date().toISOString() }];
+  guion = [responder({ mensaje: "Listo." })];
+  await webhook(env, evento("message.received", { text: "", attachments: adj, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env).obj.alarm();
+  const media = llamadas.find((l) => l.url.startsWith("https://zernio.com/api/v1/whatsapp/media/"));
+  assert.equal(media.url, "https://zernio.com/api/v1/whatsapp/media/wamidAUDIO123456?accountId=cuenta1", "saca el id del enlace y usa la descarga oficial");
+  assert.match(alModelo()[0].messages[0].content, /AUDIO transcrito/);
+
+  // Si el sitio del enlace no responde, el diagnóstico dice el error real y el sitio (sin el enlace completo)
+  reiniciar();
+  const env2 = nuevoEnv({ SALUD_CLAVE: "c8" });
+  const adj2 = [{ type: "audio", url: "https://lento.prueba/notas/abcdefghijklmnopqrstuvwxyz.ogg?firma=secreta" }];
+  historial = [{ id: "v9", direction: "incoming", message: "", attachments: adj2, sentAt: new Date().toISOString() }];
+  await webhook(env2, evento("message.received", { text: "", attachments: adj2, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env2).obj.alarm();
+  const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c8"), env2, ctx)).json();
+  const h = r.ultimasDecisiones.find((e) => e.herramientas).herramientas[0];
+  assert.match(h, /url=lento\.prueba\/notas\/….ogg/); assert.match(h, /error Network connection lost/);
+  assert.ok(!h.includes("secreta"), "no guarda los parámetros del enlace");
+  assert.match(envios()[0].message, /no logré escuchar su audio/, "si no se puede descargar, cede como siempre");
 });
 
 await prueba("herramientas: mínimo, regalo, colores, oficina, internacional y EE. UU.", async () => {

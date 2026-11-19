@@ -438,7 +438,30 @@ function esAudio(a) {
 // Para el diagnóstico: tipo y formato del adjunto, sin enlaces ni contenido
 function describirAdjunto(a) {
   const p = (a && a.payload) || {};
-  return [`tipo=${String((a && a.type) || "?").slice(0, 20)}`, (a && (a.mimeType || a.mime_type)) || p.mimeType || p.mime_type ? `formato=${String((a && (a.mimeType || a.mime_type)) || p.mimeType || p.mime_type).slice(0, 30)}` : "", p.id ? "con id" : "sin id", a && a.url ? "con url" : "sin url"].filter(Boolean).join(" ");
+  const formato = (a && (a.mimeType || a.mime_type)) || p.mimeType || p.mime_type;
+  const u = urlAbsoluta((a && a.url) || p.url || p.link);
+  return [`tipo=${String((a && a.type) || "?").slice(0, 20)}`, formato ? `formato=${String(formato).slice(0, 30)}` : "", p.id ? "con id" : "sin id",
+    u ? `url=${formaUrl(u)}` : (a && a.url) ? `url rara="${String(a.url).slice(0, 40)}"` : "sin url",
+    `campos=${Object.keys(a || {}).join(",").slice(0, 80)}${Object.keys(p).length ? ` payload=${Object.keys(p).join(",").slice(0, 60)}` : ""}`].filter(Boolean).join(" ");
+}
+// Enlaces de Zernio: pueden venir completos, sin "https:" o como ruta (/api/v1/...). Se completan para poder abrirlos.
+function urlAbsoluta(u) {
+  const t = String(u || "").trim();
+  if (!t || /^(data|blob|javascript|file):/i.test(t)) return "";
+  let completa;
+  if (/^https?:\/\//i.test(t)) completa = t;
+  else if (t.startsWith("//")) completa = "https:" + t;
+  else if (t.startsWith("/v1/")) completa = "https://zernio.com/api" + t;
+  else if (t.startsWith("/")) completa = "https://zernio.com" + t;
+  else if (/^api\//i.test(t)) completa = "https://zernio.com/" + t;
+  else if (/^v1\//i.test(t)) completa = "https://zernio.com/api/" + t;
+  else if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/|$)/i.test(t)) completa = "https://" + t;
+  else return "";
+  try { return new URL(completa).toString(); } catch { return ""; }
+}
+// Para el diagnóstico: sitio y ruta del enlace, sin parámetros ni identificadores largos
+function formaUrl(u) {
+  try { const x = new URL(u); return (x.hostname + x.pathname).replace(/[A-Za-z0-9_=-]{12,}/g, "…").slice(0, 70); } catch { return "?"; }
 }
 
 // Descarga el audio como dice Zernio (GET /whatsapp/media/{id}?accountId, con la clave) y lo pasa a texto.
@@ -448,20 +471,24 @@ async function transcribir(env, a, cuenta) {
   const clave = { Authorization: `Bearer ${env.ZERNIO_API_KEY}` };
   const p = a.payload || {};
   const esZernio = (u) => { try { const h = new URL(u).hostname; return h === "zernio.com" || h.endsWith(".zernio.com"); } catch { return false; } };
-  const ids = [...new Set([p.id, p.mediaId, p.media_id, a.mediaId, a.media_id, a.id].filter((x) => x && /^[\w.:=-]{4,300}$/.test(String(x))).map(String))];
+  const enlaces = [...new Set([a.url, p.url, p.link].map(urlAbsoluta).filter(Boolean))];
+  // El id del archivo también puede venir dentro del enlace (/whatsapp/media/{id} o ?mediaId=)
+  const idsEnlace = enlaces.map((u) => { try { const x = new URL(u); return (x.pathname.match(/\/whatsapp\/media\/([^/?#]+)/) || [])[1] || x.searchParams.get("mediaId") || x.searchParams.get("media_id") || ""; } catch { return ""; } });
+  const ids = [...new Set([p.id, p.mediaId, p.media_id, a.mediaId, a.media_id, a.id, ...idsEnlace].filter((x) => x && /^[\w.:=%-]{4,300}$/.test(String(x))).map((x) => decodeURIComponent(String(x))))];
   const intentos = [];
   if (cuenta) for (const id of ids) intentos.push({ nombre: "media", url: `${ZERNIO}/whatsapp/media/${encodeURIComponent(id)}?accountId=${encodeURIComponent(cuenta)}`, headers: clave });
-  for (const u of [...new Set([a.url, p.url, p.link].filter((x) => typeof x === "string" && /^https:\/\//.test(x)))]) intentos.push({ nombre: "url", url: u, headers: esZernio(u) ? clave : {} });
+  for (const u of enlaces) intentos.push({ nombre: `url(${formaUrl(u)})`, url: u, headers: esZernio(u) ? clave : {} });
   if (!intentos.length) return { texto: "", detalle: "el adjunto no trae id ni url" };
   const notas = [];
   let buf = null, formato = "";
   for (let k = 0; k < intentos.length && k < 8; k++) {
     const i = intentos[k];
-    const r = await fetch(i.url, { headers: i.headers, signal: AbortSignal.timeout(15000) }).catch(() => ({ ok: false, status: "sin conexión" }));
+    const r = await fetch(i.url, { headers: i.headers, signal: AbortSignal.timeout(20000) })
+      .catch((e) => ({ ok: false, status: /timeout|abort/i.test(String((e && e.name) || "")) ? "tiempo agotado" : "error " + String((e && e.message) || e).slice(0, 80) }));
     const ct = (r.headers && r.headers.get("content-type")) || "";
     if (r.ok && /json/i.test(ct)) { // algunas respuestas traen un enlace en vez del audio: se sigue ese enlace
       const j = await r.json().catch(() => null);
-      const sig = j && [j.url, j.downloadUrl, j.download_url, (j.data || {}).url].find((x) => typeof x === "string" && /^https:\/\//.test(x));
+      const sig = j && [j.url, j.downloadUrl, j.download_url, (j.data || {}).url].map(urlAbsoluta).find(Boolean);
       notas.push(`${i.nombre} 200 json${sig ? " con enlace" : " sin audio"}`);
       if (sig) intentos.push({ nombre: "enlace", url: sig, headers: esZernio(sig) ? clave : {} });
       continue;
