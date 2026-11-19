@@ -28,6 +28,7 @@ const ZERNIO = "https://zernio.com/api/v1";
 const ANTHROPIC = "https://api.anthropic.com/v1/messages";
 const MODELO_DEFECTO = "claude-sonnet-5-5";
 const MODELO_VOZ = "@cf/openai/whisper-large-v3-turbo";
+const MODELO_VOZ_RESPALDO = "@cf/openai/whisper"; // si el turbo no puede con el formato de la nota de voz
 const ESPERA_MS = 7000;             // espera para juntar mensajes seguidos del cliente
 const HUMANO_HORAS = 12;            // tras escribir Alexander (o tras ceder), el agente calla
 const MAX_RONDAS = 4;               // vueltas de herramientas por respuesta
@@ -289,14 +290,32 @@ async function atender(ev, env, s) {
   }
 
   // Audios del último turno del cliente
+  const herramientas = []; // lo que se anota en el diagnóstico (sin texto de los mensajes)
   const idxSal = hist.map((x) => x.direction).lastIndexOf("outgoing");
   const turno = hist.slice(idxSal + 1).filter((x) => x.direction === "incoming");
   let audiosFallidos = 0, transcritos = 0;
   for (const x of turno) {
-    const a = (x.attachments || []).find((y) => y.type === "audio");
-    if (!a || transcritos >= 3) continue;
-    const t = await transcribir(env, a.url).catch(() => "");
-    if (t) { x.transcripcion = t; transcritos++; } else audiosFallidos++;
+    const a = (x.attachments || []).find(esAudio);
+    if (!a) {
+      if ((x.attachments || []).length) herramientas.push(`adjunto: ${(x.attachments || []).map(describirAdjunto).join("; ")}`);
+      continue;
+    }
+    if (transcritos >= 3) continue;
+    const r = await transcribir(env, a, cuenta).catch((e) => ({ texto: "", detalle: "error: " + String((e && e.message) || e).slice(0, 120) }));
+    herramientas.push(`audio (${describirAdjunto(a)}): ${r.detalle}`);
+    if (r.texto) { x.transcripcion = r.texto; transcritos++; } else { x.audioFallido = true; audiosFallidos++; }
+  }
+
+  // Si un audio no se pudo escuchar, no se le pregunta al modelo: se le pasa el chat a Alexander de una vez
+  if (audiosFallidos) {
+    const textoCesion = `Mi amigo, no logré escuchar su audio. Ya le paso su mensaje a Alexander para que lo atienda${enHorario(Date.now()) ? " personalmente" : " en el horario de atención"}.`;
+    await s.put("enviandoHasta", Date.now() + 120e3);
+    const mid = await enviarZernio(env, cid, cuenta, { message: textoCesion });
+    await s.put("mios", [...mios, mid].filter(Boolean).slice(-60));
+    await s.put("contador", { hora, n: n + 1 });
+    await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
+    await avisarTelegram(env, ev, "🎙️ <b>Audio que el agente no pudo escuchar</b>, atiéndelo tú", "audio sin transcribir", "", textoCesion);
+    return anotar(env, { ...resumenEv(ev), ...marca, decision: "cedió a Alexander: audio que no se pudo escuchar", herramientas: herramientas.slice(0, 8) });
   }
 
   // Consulta al modelo
@@ -322,7 +341,6 @@ ${hist.slice(-HISTORIAL).map(lineaHistorial).join("\n")}
 
 Responde al último turno del cliente. Usa las herramientas para cualquier precio o envío y termina SIEMPRE con la herramienta responder.`;
 
-  const herramientas = [];
   const decision = await pensar(env, sistema, pedido, { pais: pais.iso, registro: herramientas });
 
   // Enviar
@@ -374,8 +392,8 @@ function esRespuestaAutomatica(x, hist) {
 
 function lineaHistorial(x) {
   const quien = x.direction === "incoming" ? "CLIENTE" : "NEGOCIO";
-  const adj = (x.attachments || []).map((a) => (a.type === "audio"
-    ? (x.transcripcion ? `[AUDIO transcrito: "${x.transcripcion}"]` : "[AUDIO sin transcribir]")
+  const adj = (x.attachments || []).map((a) => (esAudio(a)
+    ? (x.transcripcion ? `[AUDIO transcrito: "${x.transcripcion}"]` : x.direction === "incoming" ? "[AUDIO del cliente]" : "[AUDIO]")
     : x.direction === "outgoing" && a.type === "image" ? "[FOTO enviada]"
     : `[${String(a.type || "adjunto").toUpperCase()} que no puedes ver]`)).join(" ");
   const t = textoDe(x).replace(/^\[unsupported message\]$/i, "[mensaje no soportado]");
@@ -401,18 +419,60 @@ async function enviarZernio(env, cid, cuenta, cuerpo) {
   return (d.data || {}).messageId || "";
 }
 
-async function transcribir(env, url) {
-  if (!env.AI || !url) return "";
-  let r = await fetch(url, { signal: AbortSignal.timeout(15000) }).catch(() => null);
-  if (!r || !r.ok) r = await fetch(url, { headers: { Authorization: `Bearer ${env.ZERNIO_API_KEY}` }, signal: AbortSignal.timeout(15000) }).catch(() => null);
-  if (!r || !r.ok) return "";
-  const buf = await r.arrayBuffer();
-  if (buf.byteLength < 500 || buf.byteLength > 8 * 1024 * 1024) return "";
-  const out = await env.AI.run(MODELO_VOZ, {
-    audio: aBase64(buf), language: "es", vad_filter: true,
-    initial_prompt: "Cliente preguntando por espuelas para gallos, patapiojas, líneas, pares, docenas, envío, Interrapidísimo, contraentrega, Nequi.",
-  });
-  return String((out && out.text) || "").trim().slice(0, 1000);
+// ¿Es una nota de voz o un audio? WhatsApp y Zernio pueden marcarlo como audio, voice o ptt, o solo con el tipo de archivo
+function esAudio(a) {
+  if (!a) return false;
+  const p = a.payload || {};
+  const tipo = String(a.type || "").toLowerCase(), mime = String(a.mimeType || a.mime_type || p.mimeType || p.mime_type || "").toLowerCase();
+  return ["audio", "voice", "ptt"].includes(tipo) || mime.startsWith("audio/") || Boolean(p.voice) || /\.(ogg|oga|opus|mp3|m4a|aac|amr|wav)(\?|$)/i.test(String(a.url || ""));
+}
+// Para el diagnóstico: tipo y formato del adjunto, sin enlaces ni contenido
+function describirAdjunto(a) {
+  const p = (a && a.payload) || {};
+  return [`tipo=${String((a && a.type) || "?").slice(0, 20)}`, (a && (a.mimeType || a.mime_type)) || p.mimeType || p.mime_type ? `formato=${String((a && (a.mimeType || a.mime_type)) || p.mimeType || p.mime_type).slice(0, 30)}` : "", p.id ? "con id" : "sin id", a && a.url ? "con url" : "sin url"].filter(Boolean).join(" ");
+}
+
+// Descarga el audio como dice Zernio (GET /whatsapp/media/{id}?accountId, con la clave) y lo pasa a texto.
+// La clave de Zernio solo se manda a zernio.com, nunca a otro sitio.
+async function transcribir(env, a, cuenta) {
+  if (!env.AI) return { texto: "", detalle: "falta el enlace AI (Workers AI) en el Worker" };
+  const clave = { Authorization: `Bearer ${env.ZERNIO_API_KEY}` };
+  const id = (a.payload || {}).id || a.mediaId || "";
+  const esZernio = (u) => { try { const h = new URL(u).hostname; return h === "zernio.com" || h.endsWith(".zernio.com"); } catch { return false; } };
+  const intentos = [];
+  if (id && cuenta) intentos.push({ nombre: "media", url: `${ZERNIO}/whatsapp/media/${encodeURIComponent(id)}?accountId=${encodeURIComponent(cuenta)}`, headers: clave });
+  if (a.url) intentos.push({ nombre: "url", url: a.url, headers: esZernio(a.url) ? clave : {} });
+  if (!intentos.length) return { texto: "", detalle: "el adjunto no trae id ni url" };
+  const notas = [];
+  let buf = null, formato = "";
+  for (const i of intentos) {
+    const r = await fetch(i.url, { headers: i.headers, signal: AbortSignal.timeout(15000) }).catch((e) => ({ ok: false, status: "sin conexión" }));
+    notas.push(`${i.nombre} ${r.status}`);
+    if (r.ok) { buf = await r.arrayBuffer(); formato = (r.headers && r.headers.get("content-type")) || ""; break; }
+  }
+  if (!buf) return { texto: "", detalle: `no se pudo descargar (${notas.join(", ")})` };
+  const kb = Math.round(buf.byteLength / 1024);
+  if (buf.byteLength < 500 || buf.byteLength > 8 * 1024 * 1024) return { texto: "", detalle: `descargado (${notas.join(", ")}) pero mide ${kb} KB` };
+  const fallos = [];
+  // 1) Whisper turbo (español, con filtro de voz). 2) Si falla o no entiende nada, Whisper clásico, que recibe los bytes tal cual.
+  try {
+    const out = await env.AI.run(MODELO_VOZ, {
+      audio: aBase64(buf), language: "es", vad_filter: true,
+      initial_prompt: "Cliente preguntando por espuelas para gallos, patapiojas, líneas, pares, docenas, envío, Interrapidísimo, contraentrega, Nequi.",
+    });
+    const texto = String((out && out.text) || "").trim().slice(0, 1000);
+    if (texto) return { texto, detalle: `transcrito (${notas.join(", ")}, ${kb} KB, ${texto.length} caracteres)` };
+    fallos.push("turbo no entendió nada");
+  } catch (e) { fallos.push("turbo falló: " + String((e && e.message) || e).slice(0, 100)); }
+  if (buf.byteLength <= 4 * 1024 * 1024) {
+    try {
+      const out = await env.AI.run(MODELO_VOZ_RESPALDO, { audio: [...new Uint8Array(buf)] });
+      const texto = String((out && out.text) || "").trim().slice(0, 1000);
+      if (texto) return { texto, detalle: `transcrito con el respaldo (${notas.join(", ")}, ${kb} KB, ${texto.length} caracteres; ${fallos.join("; ")})` };
+      fallos.push("respaldo no entendió nada");
+    } catch (e) { fallos.push("respaldo falló: " + String((e && e.message) || e).slice(0, 100)); }
+  }
+  return { texto: "", detalle: `descargado (${notas.join(", ")}, ${kb} KB, ${formato || "formato ?"}) pero no se pudo pasar a texto: ${fallos.join("; ")}` };
 }
 
 async function avisarTelegram(env, ev, titulo, motivo, resumen, respuesta) {
