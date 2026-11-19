@@ -26,6 +26,8 @@ globalThis.fetch = async (url, op = {}) => {
     { service: "mensajeria_do", totalPrice: 11800, carrierDescription: "Interrapidísimo", serviceDescription: "Domicilio - Oficina", carrier: "interRapidisimo" }] });
   if (url.startsWith("https://open.er-api.com/")) return J({ rates: { COP: 4000 } });
   if (url.startsWith("https://media.prueba/")) return new Response(new Uint8Array(4000));
+  if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/")) return (op.headers || {}).Authorization === "Bearer sk_prueba"
+    ? new Response(new Uint8Array(6000), { headers: { "content-type": "audio/ogg" } }) : J({ code: "missing_credentials" }, 401);
   return J({ error: "no simulado: " + url }, 404);
 };
 const kv = () => { const m = new Map(); return { get: async (k) => (m.has(k) ? m.get(k) : null), put: async (k, v) => { m.set(k, v); }, _m: m }; };
@@ -263,6 +265,49 @@ await prueba("audio: se transcribe y el modelo recibe el texto", async () => {
   await webhook(env, evento("message.received", { text: "", attachments: historial[0].attachments, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
   await chat(env).obj.alarm();
   assert.match(alModelo()[0].messages[0].content, /AUDIO transcrito: "quiero 24 pares de las amarillas de 40"/);
+});
+
+await prueba("audio de WhatsApp: se descarga de Zernio con su id y la clave (y la clave no sale a otros sitios)", async () => {
+  const env = nuevoEnv({ SALUD_CLAVE: "c4" });
+  const adj = [{ type: "voice", url: "https://lookaside.prueba/nota.ogg", payload: { id: "med1", mimeType: "audio/ogg; codecs=opus" } }];
+  historial = [{ id: "v1", direction: "incoming", message: "", attachments: adj, sentAt: new Date().toISOString() }];
+  guion = [responder({ mensaje: "Listo mi amigo." })];
+  await webhook(env, evento("message.received", { text: "", attachments: adj, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env).obj.alarm();
+  const media = llamadas.find((l) => l.url.startsWith("https://zernio.com/api/v1/whatsapp/media/"));
+  assert.equal(media.url, "https://zernio.com/api/v1/whatsapp/media/med1?accountId=cuenta1");
+  assert.match(alModelo()[0].messages[0].content, /AUDIO transcrito: "quiero 24 pares/, "una nota marcada como voice también se entiende");
+  assert.ok(!llamadas.some((l) => l.url.includes("lookaside.prueba")), "con la descarga de Zernio basta");
+  const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c4"), env, ctx)).json();
+  assert.match(r.ultimasDecisiones.find((e) => e.herramientas).herramientas[0], /audio \(tipo=voice formato=audio\/ogg.*\): transcrito \(media 200, 6 KB/);
+
+  // Sin id: se usa la url, y la clave de Zernio NO se manda a un sitio que no es Zernio
+  reiniciar();
+  const env2 = nuevoEnv();
+  historial = [{ id: "v2", direction: "incoming", message: "", attachments: [{ type: "file", mimeType: "audio/mpeg", url: "https://media.prueba/b.mp3" }], sentAt: new Date().toISOString() }];
+  guion = [responder({ mensaje: "Listo." })];
+  await webhook(env2, evento("message.received", { text: "", attachments: historial[0].attachments, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env2).obj.alarm();
+  const ajena = llamadas.find((l) => l.url.startsWith("https://media.prueba/"));
+  assert.ok(ajena && !(ajena.cabeceras || {}).Authorization, "la clave de Zernio no sale de zernio.com");
+  assert.match(alModelo()[0].messages[0].content, /AUDIO transcrito/);
+});
+
+await prueba("audio que no se puede escuchar: le pasa el chat a Alexander sin preguntarle al modelo", async () => {
+  const env = nuevoEnv({ SALUD_CLAVE: "c5", AI: { run: async () => { throw new Error("formato no soportado"); } } });
+  const adj = [{ type: "audio", payload: { id: "med2" } }];
+  historial = [{ id: "v3", direction: "incoming", message: "", attachments: adj, sentAt: new Date().toISOString() }];
+  await webhook(env, evento("message.received", { text: "", attachments: adj, sender: { phoneNumber: "+" + TEL, name: "Pedro" }, sentAt: historial[0].sentAt }));
+  await chat(env).obj.alarm();
+  assert.equal(alModelo().length, 0, "no gasta en el modelo");
+  const e = envios();
+  assert.equal(e.length, 1); assert.match(e[0].message, /no logré escuchar su audio/);
+  assert.ok((await chat(env).st.get("humanoHasta")) > Date.now(), "el agente se calla en ese chat");
+  assert.match(telegrams()[0], /Audio que el agente no pudo escuchar/);
+  const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c5"), env, ctx)).json();
+  const d = r.ultimasDecisiones.find((x) => x.herramientas);
+  assert.match(d.decision, /cedió a Alexander: audio/);
+  assert.match(d.herramientas[0], /no se pudo pasar a texto: turbo falló: formato no soportado; respaldo falló: formato no soportado/);
 });
 
 await prueba("herramientas: mínimo, regalo, colores, oficina, internacional y EE. UU.", async () => {
