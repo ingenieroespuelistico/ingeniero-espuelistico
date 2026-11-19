@@ -25,13 +25,13 @@ import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 import { atenderWhatsApp, diagnosticoWhatsApp, conectarAgente, modoAgente, ConversacionWA } from "./agente.js";
 
-const VERSION = "2026-11-19.6";
+const VERSION = "2026-11-19.7";
 const C = Tienda.Calculo;
 
 // Agente de WhatsApp: la "memoria" de cada chat (Durable Object) se exporta aquí y usa las mismas
 // funciones de la tienda para cotizar (precios, Interrapidísimo, DHL) y para avisar por Telegram.
 export { ConversacionWA };
-conectarAgente({ Tienda, fleteColombia, fleteDHL, tasaDolar, telegram });
+conectarAgente({ Tienda, fleteColombia, fleteDHL, tasaDolar, telegram, horariosLlamada, reservarLlamada });
 
 const CABECERAS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -794,38 +794,55 @@ async function agendaOcupado(env) {
   try { return json({ ok: true, activo: true, ocupado: await listaOcupado(env) }); }
   catch (e) { console.error("Google Calendar", e && e.message); return json({ ok: true, activo: false }); }
 }
-async function agendarLlamada(c, env, request) {
-  if (!cuentaServicio(env)) return error("La agenda en línea no está activa. Escríbenos por WhatsApp.", 503);
+// Núcleo de la agenda: lo usan la página web (/api/agenda) y el agente de WhatsApp
+const fechaCO = (ms) => new Date(ms - 5 * 3600e3).toISOString().slice(0, 10);
+const textoCuando = (ms) => new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+
+// Próximos horarios libres: por defecto el primero de la mañana y el primero de la tarde de cada día
+async function horariosLlamada(env, { franja = "", desde = "", max = 6 } = {}) {
+  if (!cuentaServicio(env)) return { activa: false };
+  const A = Tienda.AGENDA, lista = await listaOcupado(env), ahora = Date.now(), libres = [];
+  for (let k = 0; k <= A.diasAMostrar && libres.length < max; k++) {
+    const dia = fechaCO(ahora + k * 86400000);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(desde) && dia < desde) continue;
+    const delDia = C.horasAgenda(dia).filter((t) => {
+      const inicio = C.instanteColombia(dia, t), fin = inicio + A.duracionMinutos * 60000;
+      if (inicio < ahora + A.anticipacionMinutos * 60000) return false;
+      if (franja === "manana" && t >= 12 * 60) return false;
+      if (franja === "tarde" && t < 12 * 60) return false;
+      return !lista.some((o) => inicio < Date.parse(o.fin) && fin > Date.parse(o.inicio));
+    });
+    const elegidos = franja ? delDia.slice(0, 3) : [delDia.find((t) => t < 12 * 60), delDia.find((t) => t >= 12 * 60)].filter((t) => t !== undefined);
+    for (const t of elegidos) if (libres.length < max) libres.push({ dia, minutos: t, texto: textoCuando(C.instanteColombia(dia, t)) });
+  }
+  return { activa: true, libres };
+}
+
+// Crea la cita en Google Calendar y avisa por Telegram. Devuelve { ok, estado, error, cuando, ocupado }
+async function reservarLlamada({ nombre, pais, celular, dia, hora, productos = [], nota = "", origen = "la página web" }, env) {
+  if (!cuentaServicio(env)) return { ok: false, estado: 503, inactiva: true, error: "La agenda en línea no está activa. Escríbenos por WhatsApp." };
   const A = Tienda.AGENDA;
-  const nombre = texto(c.nombre, 80), pais = texto(c.pais, 40), celular = texto(c.celular, 20).replace(/[^\d+]/g, "");
-  const dia = String(c.dia || ""), hora = Number(c.hora);
-  const productos = (Array.isArray(c.productos) ? c.productos : []).slice(0, 12).map((x) => texto(x, 60)).filter(Boolean);
-  const nota = texto(c.nota, 200);
-  if (!nombre || !/^\+\d{8,15}$/.test(celular)) return error("Revisa tu nombre y tu celular.");
-  if (c.acepto !== true) return error("Para agendar, autoriza el tratamiento de tus datos.");
-  if (!C.horasAgenda(dia).includes(hora)) return error("Esa hora no está dentro del horario de llamadas.");
+  if (!C.horasAgenda(dia).includes(hora)) return { ok: false, estado: 400, error: "Esa hora no está dentro del horario de llamadas." };
   const inicio = C.instanteColombia(dia, hora), fin = inicio + A.duracionMinutos * 60000;
-  if (inicio < Date.now() + (A.anticipacionMinutos - 5) * 60000 || inicio > Date.now() + 31 * 86400000) return error("Elige una hora más adelante.");
-  // Freno contra abuso: pocas citas por celular y por conexión al día
+  if (inicio < Date.now() + (A.anticipacionMinutos - 5) * 60000 || inicio > Date.now() + 31 * 86400000) return { ok: false, estado: 400, error: "Elige una hora más adelante." };
+  // Freno contra abuso: máximo 2 citas por celular al día
   if (env.PEDIDOS) {
-    const ip = request.headers.get("CF-Connecting-IP") || "x";
-    const kc = `agenda:cel:${celular}`, ki = `agenda:ip:${ip}`;
-    const [nc, ni] = await Promise.all([env.PEDIDOS.get(kc), env.PEDIDOS.get(ki)]).then((v) => v.map((x) => Number(x) || 0));
-    if (nc >= 2 || ni >= 4) return error("Ya tienes llamadas agendadas. Si necesitas otra, escríbenos por WhatsApp.", 429);
-    await Promise.all([env.PEDIDOS.put(kc, String(nc + 1), { expirationTtl: 86400 }), env.PEDIDOS.put(ki, String(ni + 1), { expirationTtl: 86400 })]);
+    const kc = `agenda:cel:${celular}`, nc = Number(await env.PEDIDOS.get(kc)) || 0;
+    if (nc >= 2) return { ok: false, estado: 429, error: "Ya tienes llamadas agendadas. Si necesitas otra, escríbenos por WhatsApp." };
+    await env.PEDIDOS.put(kc, String(nc + 1), { expirationTtl: 86400 });
   }
   let lista;
-  try { lista = await listaOcupado(env, true); } catch (e) { console.error("Google Calendar", e && e.message); return error("No pudimos revisar la agenda en este momento.", 502); }
-  if (lista.some((o) => inicio < Date.parse(o.fin) && fin > Date.parse(o.inicio))) return json({ ok: false, error: "Esa hora se acaba de ocupar. Elige otra.", ocupado: lista }, 409);
-  const cuando = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }).format(new Date(inicio));
+  try { lista = await listaOcupado(env, true); } catch (e) { console.error("Google Calendar", e && e.message); return { ok: false, estado: 502, error: "No pudimos revisar la agenda en este momento." }; }
+  if (lista.some((o) => inicio < Date.parse(o.fin) && fin > Date.parse(o.inicio))) return { ok: false, estado: 409, error: "Esa hora se acaba de ocupar. Elige otra.", ocupado: lista };
+  const cuando = textoCuando(inicio);
   const wa = `https://wa.me/${celular.replace(/\D/g, "")}`;
   try {
     await crearEvento(env, calendarioId(env, Tienda.NEGOCIO.correo), {
       inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString(),
       titulo: `📞 Llamar a ${nombre} (${pais || "?"})`,
-      descripcion: [`Celular: ${celular}`, `WhatsApp: ${wa}`, `País: ${pais}`, `Productos de interés: ${productos.join(", ") || "por definir"}`, nota ? `Comentario: ${nota}` : "", "", "Agendada desde la página web."].filter((x) => x !== "").join("\n"),
+      descripcion: [`Celular: ${celular}`, `WhatsApp: ${wa}`, `País: ${pais}`, `Productos de interés: ${productos.join(", ") || "por definir"}`, nota ? `Comentario: ${nota}` : "", "", `Agendada desde ${origen}.`].filter((x) => x !== "").join("\n"),
     });
-  } catch (e) { console.error("Google Calendar evento", e && e.message); return error("No pudimos guardar la cita en este momento.", 502); }
+  } catch (e) { console.error("Google Calendar evento", e && e.message); return { ok: false, estado: 502, error: "No pudimos guardar la cita en este momento." }; }
   ocupadoGuardado = null;
   await telegram(env, [
     "📞 <b>LLAMADA AGENDADA</b>",
@@ -834,8 +851,29 @@ async function agendarLlamada(c, env, request) {
     `📱 ${esc(celular)} · <a href="${esc(wa)}">WhatsApp</a>`,
     `Productos: ${esc(productos.join(", ") || "por definir")}`,
     nota ? `Comentario: ${esc(nota)}` : null,
+    `Agendada desde ${esc(origen)}.`,
   ].filter((x) => x !== null).join("\n"));
-  return json({ ok: true, inicio: new Date(inicio).toISOString() });
+  return { ok: true, inicio: new Date(inicio).toISOString(), cuando };
+}
+
+async function agendarLlamada(c, env, request) {
+  if (!cuentaServicio(env)) return error("La agenda en línea no está activa. Escríbenos por WhatsApp.", 503);
+  const nombre = texto(c.nombre, 80), pais = texto(c.pais, 40), celular = texto(c.celular, 20).replace(/[^\d+]/g, "");
+  const dia = String(c.dia || ""), hora = Number(c.hora);
+  const productos = (Array.isArray(c.productos) ? c.productos : []).slice(0, 12).map((x) => texto(x, 60)).filter(Boolean);
+  const nota = texto(c.nota, 200);
+  if (!nombre || !/^\+\d{8,15}$/.test(celular)) return error("Revisa tu nombre y tu celular.");
+  if (c.acepto !== true) return error("Para agendar, autoriza el tratamiento de tus datos.");
+  // Freno contra abuso por conexión (el de celular está en reservarLlamada)
+  if (env.PEDIDOS) {
+    const ki = `agenda:ip:${request.headers.get("CF-Connecting-IP") || "x"}`, ni = Number(await env.PEDIDOS.get(ki)) || 0;
+    if (ni >= 4) return error("Ya tienes llamadas agendadas. Si necesitas otra, escríbenos por WhatsApp.", 429);
+    await env.PEDIDOS.put(ki, String(ni + 1), { expirationTtl: 86400 });
+  }
+  const r = await reservarLlamada({ nombre, pais, celular, dia, hora, productos, nota, origen: "la página web" }, env);
+  if (r.estado === 409) return json({ ok: false, error: r.error, ocupado: r.ocupado }, 409);
+  if (!r.ok) return error(r.error, r.estado || 400);
+  return json({ ok: true, inicio: r.inicio });
 }
 
 /* ---------------- Estado del pago (página de gracias) ---------------- */

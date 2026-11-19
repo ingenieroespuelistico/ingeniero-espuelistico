@@ -38,7 +38,8 @@ const FOTOS_DIAS = 30;              // una foto ya enviada en el chat no se repi
 const MAX_RESPUESTAS_HORA = 20;     // freno de gasto por chat
 const HISTORIAL = 30;               // mensajes de contexto
 const DIA = 86400;
-const AUTOMATICO_MS = 4000;          // un mensaje del celular que sale antes de esto tras el cliente es automático (bienvenida/ausencia)
+const AUTOMATICO_MS = 4000;
+const nombreAgente = (env) => String((env && env.AGENTE_NOMBRE) || "").trim().slice(0, 30) || "Talía"; // variable AGENTE_NOMBRE en Cloudflare          // un mensaje del celular que sale antes de esto tras el cliente es automático (bienvenida/ausencia)
 
 let H = null; // herramientas de la tienda (Tienda, fleteColombia, fleteDHL, tasaDolar, telegram), las conecta index.js
 export function conectarAgente(herramientas) { H = herramientas; }
@@ -290,6 +291,11 @@ async function atender(ev, env, s) {
       mensajeQueBloquea: { hora: horaCO(tiempoDe(bloqueo)), origen: fuenteDe(bloqueo) || bloqueo.sentVia || "desconocido" } });
   }
 
+  // ¿Es la primera vez que la asistente responde en este chat? Entonces se presenta como IA
+  const N = nombreAgente(env);
+  const perfilAntes = (await s.get("perfil")) || {};
+  const primera = !(perfilAntes.respuestasAgente > 0) && !hist.some((x) => x.direction === "outgoing" && (mios.includes(x.id) || x.sentVia === "api"));
+
   // Audios del último turno del cliente
   const herramientas = []; // lo que se anota en el diagnóstico (sin texto de los mensajes)
   const idxSal = hist.map((x) => x.direction).lastIndexOf("outgoing");
@@ -317,7 +323,7 @@ async function atender(ev, env, s) {
 
   // Si un audio no se pudo escuchar, no se le pregunta al modelo: se le pasa el chat a Alexander de una vez
   if (audiosFallidos) {
-    const textoCesion = `Mi amigo, no logré escuchar su audio. Ya le paso su mensaje a Alexander para que lo atienda${enHorario(Date.now()) ? " personalmente" : " en el horario de atención"}.`;
+    const textoCesion = `${primera ? `Le habla *${N}* 🤖, la asistente con inteligencia artificial de Alexander.\n` : ""}Mi amigo, no logré escuchar su audio. Ya le paso su mensaje a Alexander para que lo atienda${enHorario(Date.now()) ? " personalmente" : " en el horario de atención"}.`;
     await s.put("enviandoHasta", Date.now() + 120e3);
     const mid = await enviarZernio(env, cid, cuenta, { message: textoCesion });
     await s.put("mios", [...mios, mid].filter(Boolean).slice(-60));
@@ -334,7 +340,7 @@ async function atender(ev, env, s) {
   const fotosYa = Object.fromEntries(Object.entries((await s.get("fotosEnviadas")) || {}).filter(([, t]) => ahora - t < FOTOS_DIAS * DIA * 1000));
   const nombreProd = (id) => (H.Tienda.PRODUCTOS.find((p) => p.id === id) || {}).nombre || id;
   const fotosTexto = Object.entries(fotosYa).map(([id, t]) => `${nombreProd(id)} (id ${id}, ${horaCO(t)})`).join("; ");
-  const sistema = `${CONOCIMIENTO}
+  const sistema = `${CONOCIMIENTO.replaceAll("{NOMBRE}", N)}
 
 DATOS DE LA TIENDA (hoy)
 ${datosTienda(env)}
@@ -343,6 +349,7 @@ Hora actual en Colombia: ${horaCO(ahora)} (${enHorario(ahora) ? "dentro" : "FUER
 - Nombre en WhatsApp: ${nombre || "(desconocido)"}
 - País por el número: ${pais.nombre}
 - ¿Ya había escrito antes?: ${previo ? "sí, tiene historial con el negocio" : "no, parece cliente nuevo"}
+- Primera respuesta tuya en este chat: ${primera ? "sí (preséntate)" : "no"}
 - Fotos ya enviadas en este chat: ${fotosTexto || "ninguna"}
 ${campana ? `- Llegó por el anuncio: ${campana}\n` : ""}${audiosFallidos ? `- OJO: ${audiosFallidos} audio(s) del cliente no se pudieron transcribir.\n` : ""}
 HISTORIAL (lo más antiguo arriba; NEGOCIO incluye mensajes de Alexander y del asistente)
@@ -350,10 +357,13 @@ ${hist.slice(-HISTORIAL).map(lineaHistorial).join("\n")}
 
 Responde al último turno del cliente. Usa las herramientas para cualquier precio o envío y termina SIEMPRE con la herramienta responder.`;
 
-  const decision = await pensar(env, sistema, pedido, { pais: pais.iso, registro: herramientas });
+  const ctxH = { pais: pais.iso, paisNombre: pais.nombre, tel, nombreWA: nombre, registro: herramientas };
+  const decision = await pensar(env, sistema, pedido, ctxH);
 
   // Enviar
-  const texto = String(decision.mensaje || "").trim().slice(0, 1500);
+  let texto = String(decision.mensaje || "").trim().slice(0, 1500);
+  // En el primer mensaje del chat siempre se presenta como asistente con IA, aunque el modelo lo olvide
+  if (primera && texto && !texto.toLowerCase().includes(N.toLowerCase())) texto = `Le habla *${N}* 🤖, la asistente con inteligencia artificial de Alexander.\n${texto}`;
   // Fotos: no se repiten las ya enviadas en este chat, salvo que el cliente las pida de nuevo (reenviar_fotos)
   const pedidas = [...new Set((decision.fotos || []).filter((id) => H.Tienda.PRODUCTOS.some((p) => p.id === id)))];
   const fotos = (decision.reenviar_fotos ? pedidas : pedidas.filter((id) => !fotosYa[id])).slice(0, MAX_FOTOS);
@@ -388,6 +398,7 @@ Responde al último turno del cliente. Usa las herramientas para cualquier preci
       primerContacto: antes.primerContacto || new Date(tiempoDe(hist[0]) || ahora).toISOString(), ultimoContacto: new Date(ahora).toISOString(),
       anuncio: campana || antes.anuncio || "", resumen: decision.resumen || antes.resumen || "",
       cesiones: (antes.cesiones || 0) + (decision.ceder ? 1 : 0), respuestasAgente: (antes.respuestasAgente || 0) + 1,
+      ...(ctxH.llamada ? { llamada: ctxH.llamada } : {}),
     }));
   }
 }
@@ -577,7 +588,7 @@ function datosTienda(env) {
   if (T.CUOTAS_SIN_INTERES > 1) l.push(`Pago en línea con tarjeta: hasta ${T.CUOTAS_SIN_INTERES} cuotas sin interés.`);
   l.push(`Envío propio internacional (estimado máximo): USD ${I.base} hasta 1 kg + USD ${I.porMedioKiloExtra} por cada medio kilo adicional, a: ${(I.paisesConTarifa || []).join(", ")}. Demás países: DHL.`);
   l.push(`NO se envía a: ${Object.values(N.paisesSinEnvio || {}).join(", ")}.`);
-  l.push(`Nequi del negocio: ${env.PAGO_NEQUI ? String(env.PAGO_NEQUI).slice(0, 200) : "(no configurado: si piden Nequi, cede)"}`);
+  l.push(`Horario de llamadas con Alexander: ${horarioLlamadas()}.`);
   l.push(`Fotos que puedes enviar (ids para el campo fotos): ${T.PRODUCTOS.map((p) => p.id).join(", ")}.`);
   // Preguntas frecuentes de la tienda, como apoyo. Las de regalos y pagos se omiten: las reglas del agente las cubren mejor.
   const faq = (T.PREGUNTAS || []).filter((q) => !/regalo|pagar/i.test(q.pregunta));
@@ -615,6 +626,17 @@ const HERRAMIENTAS = [
     input_schema: { type: "object", required: ["pais"], properties: {
       lineas: LINEAS, pais: { type: "string", description: "Código ISO de 2 letras, ej. PA, CR, VE, EC, PE, MX" },
       ciudad: { type: "string" }, region: { type: "string", description: "Provincia, departamento o estado" }, postal: { type: "string" } } } },
+  { name: "horarios_llamada", description: "Próximos horarios libres para una llamada telefónica con Alexander (hora de Colombia). Úsala cuando el cliente elige que lo llamen.",
+    input_schema: { type: "object", properties: {
+      franja: { type: "string", enum: ["manana", "tarde"], description: "Solo si el cliente pidió en la mañana o en la tarde" },
+      desde: { type: "string", description: "Fecha AAAA-MM-DD desde la que se busca, solo si el cliente pidió un día" } } } },
+  { name: "agendar_llamada", description: "Agenda la llamada con Alexander y le avisa. Con la agenda activa manda dia y minutos de un horario de horarios_llamada; si la agenda no está activa, manda preferencia.",
+    input_schema: { type: "object", required: ["nombre"], properties: {
+      nombre: { type: "string", description: "Nombre del cliente" },
+      dia: { type: "string", description: "AAAA-MM-DD, tal como lo dio horarios_llamada" },
+      minutos: { type: "integer", description: "Minutos desde la medianoche, tal como los dio horarios_llamada" },
+      preferencia: { type: "string", description: "Solo si la agenda no está activa: día y hora que pidió el cliente" },
+      tema: { type: "string", description: "Una línea: de qué quiere hablar el cliente" } } } },
   { name: "responder", description: "Respuesta final para el cliente. Llámala siempre al terminar.",
     input_schema: { type: "object", required: ["mensaje", "ceder", "avisar", "resumen"], properties: {
       mensaje: { type: "string", description: "Un solo mensaje de WhatsApp para el cliente: máximo 8 líneas cortas; opciones y precios en lista con \"- \"" },
@@ -708,6 +730,7 @@ function completarParaEnvio(entrada) {
 export async function ejecutar(nombre, inp, env, ctx = {}) {
   const T = H.Tienda, C = T.Calculo;
   const reg = (txt) => { if (ctx.registro) ctx.registro.push(`${nombre}: ${txt}`); };
+  if (nombre === "horarios_llamada" || nombre === "agendar_llamada") return llamada(nombre, inp, env, ctx, reg);
   const esEnvio = nombre === "cotizar_envio_colombia" || nombre === "cotizar_envio_internacional";
   const base = esEnvio ? completarParaEnvio(inp.lineas) : { lineas: inp.lineas, supuesto: "" };
   const estimado = base.supuesto ? { estimado: `Valor estimado con ${base.supuesto}: dilo como "desde" y aclara que el valor final depende del pedido.` } : {};
@@ -779,6 +802,62 @@ export async function ejecutar(nombre, inp, env, ctx = {}) {
   return { ok: false, error: "Herramienta desconocida" };
 }
 
+/* ---------------- Llamadas con Alexander ---------------- */
+const hora12 = (hhmm) => { const [h, m] = String(hhmm).split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "a. m." : "p. m."}`; };
+function horarioLlamadas() {
+  const A = (H && H.Tienda.AGENDA) || null;
+  if (!A) return "en el horario de atención";
+  return `lunes a viernes de ${hora12(A.lunesAViernes[0])} a ${hora12(A.lunesAViernes[1])} (descanso de ${hora12(A.descanso[0])} a ${hora12(A.descanso[1])}) y sábados de ${hora12(A.sabado[0])} a ${hora12(A.sabado[1])}, hora de Colombia; domingos y festivos no`;
+}
+
+async function llamada(nombre, inp, env, ctx, reg) {
+  const sinAgenda = { ok: true, agenda_activa: false, horario_llamadas: horarioLlamadas(),
+    que_hacer: "Pregúntale qué día y a qué hora le queda bien dentro de ese horario y usa agendar_llamada con preferencia." };
+  if (nombre === "horarios_llamada") {
+    if (!H.horariosLlamada) { reg("agenda no conectada"); return sinAgenda; }
+    try {
+      const r = await H.horariosLlamada(env, { franja: ["manana", "tarde"].includes(inp.franja) ? inp.franja : "", desde: String(inp.desde || ""), max: 6 });
+      if (!r.activa) { reg("agenda no activa (falta GOOGLE_CUENTA_SERVICIO)"); return sinAgenda; }
+      reg(`ok (${r.libres.length} horarios)`);
+      if (!r.libres.length) return { ok: true, agenda_activa: true, horarios: [], que_hacer: "No hay horarios libres pronto: ofrécele pasarle el chat a Alexander." };
+      return { ok: true, agenda_activa: true, horarios: r.libres, nota: "Ofrece máximo 3, en hora de Colombia. Para agendar manda dia y minutos tal cual." };
+    } catch (e) { reg("FALLA " + String((e && e.message) || e).slice(0, 120)); return sinAgenda; }
+  }
+
+  // agendar_llamada
+  const cliente = String(inp.nombre || ctx.nombreWA || "").trim().slice(0, 80);
+  const tel = String(ctx.tel || "").replace(/\D/g, "");
+  if (!cliente) return { ok: false, error: "Falta el nombre del cliente: pregúntaselo." };
+  if (tel.length < 8) { reg("sin número del cliente"); return { ok: false, error: "No tengo el número del cliente para la llamada: ofrécele pasarle el chat a Alexander." }; }
+  const celular = "+" + tel, tema = String(inp.tema || "").trim().slice(0, 200), N = nombreAgente(env);
+  const minutos = Number(inp.minutos);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(inp.dia || "")) && Number.isInteger(minutos) && H.reservarLlamada) {
+    const r = await H.reservarLlamada({ nombre: cliente, pais: ctx.paisNombre || "", celular, dia: String(inp.dia), hora: minutos, productos: [], nota: tema, origen: `WhatsApp (agendada por ${N})` }, env)
+      .catch((e) => ({ ok: false, estado: 502, error: String((e && e.message) || e).slice(0, 120) }));
+    if (r.ok) { ctx.llamada = r.cuando; reg(`ok ${r.cuando}`); return { ok: true, confirmada: true, cuando: r.cuando, nota: "Confírmale el día y la hora (hora de Colombia). Alexander ya quedó avisado." }; }
+    if (!r.inactiva) {
+      reg(`FALLA ${r.error}`);
+      if (r.estado === 409) return { ok: false, error: "Ese horario se acaba de ocupar: usa horarios_llamada otra vez y ofrécele otros." };
+      if (r.estado === 429) return { ok: false, error: "Este cliente ya tiene llamadas agendadas hoy: ofrécele pasarle el chat a Alexander." };
+      if (r.estado === 400) return { ok: false, error: r.error + " Usa horarios_llamada y ofrécele uno de esos horarios." };
+    }
+  }
+  // Agenda no activa (o falló): se le manda la solicitud a Alexander por Telegram
+  const pref = String(inp.preferencia || "").trim().slice(0, 120) || (inp.dia && Number.isInteger(minutos) ? `${inp.dia} a las ${hora12(`${Math.floor(minutos / 60)}:${minutos % 60}`)}` : "");
+  if (!pref) return { ok: false, error: "Pregúntale qué día y a qué hora le queda bien la llamada." };
+  const enviado = H.telegram && await H.telegram(env, [
+    "📞 <b>SOLICITUD DE LLAMADA</b> (WhatsApp)",
+    `<b>${esc(cliente)}</b>${ctx.paisNombre ? " · " + esc(ctx.paisNombre) : ""}`,
+    `📱 ${esc(celular)} · <a href="https://wa.me/${tel}">WhatsApp</a>`,
+    `🗓 Prefiere: ${esc(pref)}`,
+    tema ? `Tema: ${esc(tema)}` : null,
+    "La agenda en línea no está activa: llámalo o confírmale la hora por WhatsApp.",
+  ].filter(Boolean).join("\n")).catch(() => false);
+  if (!enviado) { reg("FALLA no se pudo avisar por Telegram"); return { ok: false, error: "No pude agendar ahora: ofrécele pasarle el chat a Alexander." }; }
+  ctx.llamada = "pendiente de confirmar: " + pref; reg(`solicitud enviada (${pref})`);
+  return { ok: true, confirmada: false, nota: "Dile que ya le pasaste la solicitud a Alexander y que él lo llama en ese horario o le confirma la hora por aquí." };
+}
+
 /* ---------------- 6. Diagnóstico ---------------- */
 export async function diagnosticoWhatsApp(request, env) {
   const url = new URL(request.url), clave = url.searchParams.get("clave") || "";
@@ -787,8 +866,9 @@ export async function diagnosticoWhatsApp(request, env) {
   const r = {
     modo: modoAgente(env),
     modelo: env.ANTHROPIC_MODEL || MODELO_DEFECTO,
+    nombre: nombreAgente(env),
     configurado: { ZERNIO_WEBHOOK_SECRET: Boolean(env.ZERNIO_WEBHOOK_SECRET), ZERNIO_API_KEY: Boolean(env.ZERNIO_API_KEY), ANTHROPIC_API_KEY: Boolean(env.ANTHROPIC_API_KEY),
-      PAGO_NEQUI: Boolean(env.PAGO_NEQUI), ENVIA_TOKEN: Boolean(env.ENVIA_TOKEN), memoria_por_chat: Boolean(env.CONVERSACIONES_WA), transcripcion_audios: Boolean(env.AI), telegram: Boolean(env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID) },
+      PAGO_NEQUI: Boolean(env.PAGO_NEQUI), ENVIA_TOKEN: Boolean(env.ENVIA_TOKEN), memoria_por_chat: Boolean(env.CONVERSACIONES_WA), transcripcion_audios: Boolean(env.AI), agenda_llamadas: Boolean(env.GOOGLE_CUENTA_SERVICIO), telegram: Boolean(env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID) },
     numerosDePrueba: lista(env.AGENTE_NUMEROS_PRUEBA).map(enmascarar),
     excluidos: lista(env.AGENTE_EXCLUIDOS).length,
   };
