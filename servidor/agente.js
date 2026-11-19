@@ -15,6 +15,10 @@
 //   AGENTE_EXCLUIDOS       ids de conversación de Zernio donde nunca responde, separados por coma
 // SECRETOS: ZERNIO_API_KEY, ZERNIO_WEBHOOK_SECRET, ANTHROPIC_API_KEY, PAGO_NEQUI (texto con los datos de Nequi)
 // OPCIONALES: ANTHROPIC_MODEL (por defecto MODELO_DEFECTO), ZERNIO_ACCOUNT_ID (si el aviso no trae la cuenta)
+//
+// DIAGNÓSTICO: https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=<SALUD_CLAVE o ADMIN_CLAVE>
+//   muestra la configuración (sin valores secretos) y las últimas 60 decisiones del agente.
+//   Con &revisar=1 además prueba en vivo las claves de Anthropic y de Zernio.
 
 import { CONOCIMIENTO } from "./agente-conocimiento.js";
 
@@ -72,6 +76,39 @@ export function paisPorNumero(tel) {
   return p ? { iso: p[1], nombre: p[2] } : { iso: "", nombre: "desconocido" };
 }
 
+// En WhatsApp, sender.phoneNumber puede venir vacío (migración de Meta a BSUID, o usuarios con nombre de
+// usuario). Entonces el número viene en sender.id (sin "+"), o solo hay un businessScopedUserId.
+function idsRemitente(m, conv) {
+  const s = (m && m.sender) || {};
+  return [s.phoneNumber, s.id, s.businessScopedUserId, s.parentBusinessScopedUserId, (conv || {}).participantId]
+    .filter(Boolean).map((x) => String(x).trim());
+}
+export function telefonoDe(m, conv) {
+  const s = (m && m.sender) || {};
+  for (const v of [s.phoneNumber, s.id, (conv || {}).participantId]) {
+    const t = String(v || "").trim();
+    if (/^\+?\d{7,15}$/.test(t.replace(/[\s-]/g, ""))) return digitos(t);
+  }
+  return "";
+}
+function esDePrueba(env, m, conv) {
+  const ids = idsRemitente(m, conv), idsDig = ids.map(digitos).filter((d) => d.length >= 7);
+  return lista(env.AGENTE_NUMEROS_PRUEBA).some((x) => ids.includes(x) || (digitos(x).length >= 7 && idsDig.includes(digitos(x))));
+}
+const enmascarar = (v) => { const s = String(v || ""); return s.length > 8 ? s.slice(0, 5) + "…" + s.slice(-3) : s ? "…" + s.slice(-2) : "(vacío)"; };
+
+// Registro de diagnóstico: últimas decisiones del agente, sin texto de los mensajes
+async function anotar(env, datos) {
+  try {
+    if (!env.CONVERSACIONES_WA) return;
+    const d = env.CONVERSACIONES_WA.get(env.CONVERSACIONES_WA.idFromName("__diagnostico__"));
+    await d.fetch("https://agente/diag/anotar", { method: "POST", body: JSON.stringify({ hora: horaCO(Date.now()), ...datos }) });
+  } catch (e) { console.error("diagnóstico", e && e.message); }
+  console.log("agente", JSON.stringify(datos));
+}
+const resumenEv = (ev) => { const m = (ev && ev.message) || {}, c = (ev && ev.conversation) || {};
+  return { evento: ev && ev.event, chat: String(m.conversationId || c.id || "").slice(-6), de: enmascarar(telefonoDe(m, c) || (m.sender || {}).id) }; };
+
 async function firmaValida(cuerpo, firma, secreto) {
   if (!firma || !secreto) return false;
   const enc = new TextEncoder();
@@ -94,23 +131,21 @@ function aBase64(buf) {
 /* ---------------- 1. Webhook de Zernio ---------------- */
 export async function atenderWhatsApp(request, env) {
   if (request.method !== "POST") return ok();
-  if (!env.ZERNIO_WEBHOOK_SECRET) return ok("Falta ZERNIO_WEBHOOK_SECRET", 503); // sin secreto no se acepta nada
+  if (!env.ZERNIO_WEBHOOK_SECRET) { await anotar(env, { decision: "rechazado: falta el secreto ZERNIO_WEBHOOK_SECRET en Cloudflare" }); return ok("Falta ZERNIO_WEBHOOK_SECRET", 503); }
   const crudo = await request.text();
   const firma = request.headers.get("X-Zernio-Signature") || request.headers.get("X-Late-Signature") || "";
-  if (!(await firmaValida(crudo, firma, env.ZERNIO_WEBHOOK_SECRET))) return ok("Firma inválida", 401);
+  if (!(await firmaValida(crudo, firma, env.ZERNIO_WEBHOOK_SECRET))) {
+    await anotar(env, { decision: firma ? "rechazado: la firma no coincide (el secret del webhook en Zernio es distinto al de Cloudflare)" : "rechazado: el aviso llegó sin firma (falta el secret en el webhook de Zernio)" });
+    return ok("Firma inválida", 401);
+  }
   let ev;
   try { ev = JSON.parse(crudo); } catch { return ok("JSON inválido", 400); }
-  if (!ev || (ev.event !== "message.received" && ev.event !== "message.sent")) return ok();
+  if (!ev || (ev.event !== "message.received" && ev.event !== "message.sent")) { await anotar(env, { evento: ev && ev.event, decision: "ignorado: tipo de evento que el agente no usa" }); return ok(); }
   if (modoAgente(env) === "no") return ok(); // apagado: no hace nada
   const m = ev.message || {};
   if (m.platform && m.platform !== "whatsapp") return ok();
   const cid = m.conversationId || (ev.conversation || {}).id;
-  if (!cid || !env.CONVERSACIONES_WA) return ok();
-  if (ev.id && env.PEDIDOS) { // Zernio puede repetir un aviso: se procesa una sola vez
-    const k = "wa:evt:" + ev.id;
-    if (await env.PEDIDOS.get(k)) return ok();
-    await env.PEDIDOS.put(k, "1", { expirationTtl: 2 * DIA });
-  }
+  if (!cid || !env.CONVERSACIONES_WA) { await anotar(env, { ...resumenEv(ev), decision: "ignorado: el aviso no trae conversación" }); return ok(); }
   const chat = env.CONVERSACIONES_WA.get(env.CONVERSACIONES_WA.idFromName(cid));
   await chat.fetch("https://agente/evento", { method: "POST", body: crudo });
   return ok();
@@ -121,9 +156,23 @@ export class ConversacionWA {
   constructor(state, env) { this.state = state; this.env = env; }
 
   async fetch(request) {
+    const ruta = new URL(request.url).pathname, s = this.state.storage;
+    if (ruta === "/diag/anotar") {
+      const l = (await s.get("diag")) || [];
+      l.push(await request.json().catch(() => ({})));
+      await s.put("diag", l.slice(-60));
+      return ok();
+    }
+    if (ruta === "/diag/leer") return new Response(JSON.stringify(((await s.get("diag")) || []).slice().reverse()), { headers: { "content-type": "application/json" } });
     const ev = await request.json().catch(() => null);
-    if (ev && ev.event === "message.sent") await this.saliente(ev);
-    else if (ev && ev.event === "message.received") await this.entrante(ev);
+    if (!ev) return ok();
+    if (ev.id) { // Zernio puede repetir un aviso: se procesa una sola vez (sin gastar escrituras de KV)
+      const vistos = (await s.get("eventos")) || [];
+      if (vistos.includes(ev.id)) { await anotar(this.env, { ...resumenEv(ev), decision: "ignorado: aviso repetido" }); return ok(); }
+      await s.put("eventos", [...vistos, ev.id].slice(-200));
+    }
+    if (ev.event === "message.sent") await this.saliente(ev);
+    else if (ev.event === "message.received") await this.entrante(ev);
     return ok();
   }
 
@@ -134,6 +183,7 @@ export class ConversacionWA {
     const mios = (await s.get("mios")) || [];
     if ([m.platformMessageId, m.id].filter(Boolean).some((id) => mios.includes(id))) return;
     if (m.sentVia === "api" && ((await s.get("enviandoHasta")) || 0) > Date.now()) return; // es del agente (aviso adelantado)
+    await anotar(this.env, { ...resumenEv(ev), decision: `Alexander escribió (${fuenteDe(m) || m.sentVia || "origen desconocido"}): el agente calla ${HUMANO_HORAS} h en este chat` });
     await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
     await s.delete("pendiente");
     await s.deleteAlarm();
@@ -144,12 +194,15 @@ export class ConversacionWA {
     if (md === "no") return;
     const m = ev.message || {}, conv = ev.conversation || {};
     const cid = m.conversationId || conv.id;
-    if (lista(env.AGENTE_EXCLUIDOS).includes(cid)) return;
-    if (md === "prueba" && !lista(env.AGENTE_NUMEROS_PRUEBA).map(digitos).includes(digitos((m.sender || {}).phoneNumber))) return;
+    if (lista(env.AGENTE_EXCLUIDOS).includes(cid)) return anotar(env, { ...resumenEv(ev), decision: "ignorado: conversación excluida" });
+    if (md === "prueba" && !esDePrueba(env, m, conv)) {
+      return anotar(env, { ...resumenEv(ev), decision: "modo prueba: no es un número de prueba", idsRecibidos: idsRemitente(m, conv).map(enmascarar) });
+    }
     const s = this.state.storage;
-    if (((await s.get("humanoHasta")) || 0) > Date.now()) return;
+    if (((await s.get("humanoHasta")) || 0) > Date.now()) return anotar(env, { ...resumenEv(ev), decision: "en manos de Alexander: el agente no responde aquí todavía" });
     await s.put("pendiente", ev);
     await s.setAlarm(Date.now() + ESPERA_MS); // cada mensaje nuevo corre la alarma: se responde una vez
+    await anotar(env, { ...resumenEv(ev), decision: `recibido: responde en ~${ESPERA_MS / 1000} s si no llegan más mensajes` });
   }
 
   async alarm() {
@@ -159,6 +212,7 @@ export class ConversacionWA {
     try { await atender(ev, this.env, s); }
     catch (e) { // nunca se reintenta (evita mensajes dobles): se avisa a Alexander
       console.error("agente", e && (e.stack || e.message));
+      await anotar(this.env, { ...resumenEv(ev), decision: "ERROR: " + String((e && e.message) || e).slice(0, 300) });
       await avisarTelegram(this.env, ev, "⚠️ <b>El agente no pudo responder</b>, respóndele tú", String((e && e.message) || e).slice(0, 200)).catch(() => {});
     }
   }
@@ -172,7 +226,7 @@ async function atender(ev, env, s) {
   const m = ev.message || {}, conv = ev.conversation || {};
   const cid = m.conversationId || conv.id;
   const cuenta = (ev.account || {}).accountId || env.ZERNIO_ACCOUNT_ID || (ev.account || {}).id;
-  const tel = digitos((m.sender || {}).phoneNumber);
+  const tel = telefonoDe(m, conv);
   const nombre = (m.sender || {}).name || conv.participantName || "";
   const pais = paisPorNumero(tel);
 
@@ -181,6 +235,7 @@ async function atender(ev, env, s) {
   const n = cont.hora === hora ? cont.n : 0;
   if (n >= MAX_RESPUESTAS_HORA) {
     await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
+    await anotar(env, { ...resumenEv(ev), decision: "freno: demasiadas respuestas en una hora, pasa a Alexander" });
     return avisarTelegram(env, ev, "🛑 <b>Freno del agente</b>: muchas respuestas en una hora en este chat, atiéndelo tú", "");
   }
 
@@ -196,10 +251,10 @@ async function atender(ev, env, s) {
   const mios = (await s.get("mios")) || [];
   const delAgente = (x) => mios.includes(x.id) || x.sentVia === "api";
   const salientesReales = hist.filter((x) => x.direction === "outgoing" && !esAutomatico(x));
-  if (salientesReales.some((x) => tiempoDe(x) > tEste)) return;
+  if (salientesReales.some((x) => tiempoDe(x) > tEste)) return anotar(env, { ...resumenEv(ev), decision: "no responde: ya se respondió después de ese mensaje" });
   if (salientesReales.some((x) => !delAgente(x) && Date.now() - tiempoDe(x) < HUMANO_HORAS * 3600e3)) {
     await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
-    return;
+    return anotar(env, { ...resumenEv(ev), decision: `no responde: Alexander escribió en este chat en las últimas ${HUMANO_HORAS} h` });
   }
 
   // Audios del último turno del cliente
@@ -254,15 +309,17 @@ Responde al último turno del cliente. Usa las herramientas para cualquier preci
     await avisarTelegram(env, ev, "👀 <b>Pendiente de este cliente</b> (el agente sigue atendiendo)", decision.motivo_aviso, decision.resumen, texto);
   }
 
-  // CRM mínimo
-  if (env.PEDIDOS && tel) {
-    const k = "wa:cliente:" + tel, antes = JSON.parse((await env.PEDIDOS.get(k)) || "{}");
-    await env.PEDIDOS.put(k, JSON.stringify({
+  await anotar(env, { ...resumenEv(ev), decision: `respondió (${enviados.filter(Boolean).length} mensaje(s))${decision.ceder ? ", cedió a Alexander: " + (decision.motivo_cesion || "") : ""}${decision.avisar ? ", avisó a Alexander" : ""}` });
+
+  // CRM mínimo, en la memoria del chat (no gasta escrituras de KV)
+  {
+    const antes = (await s.get("perfil")) || {};
+    await s.put("perfil", ({
       ...antes, nombre: nombre || antes.nombre, telefono: tel, pais: pais.iso || antes.pais, conversacion: cid,
       primerContacto: antes.primerContacto || new Date(tiempoDe(hist[0]) || ahora).toISOString(), ultimoContacto: new Date(ahora).toISOString(),
       anuncio: campana || antes.anuncio || "", resumen: decision.resumen || antes.resumen || "",
       cesiones: (antes.cesiones || 0) + (decision.ceder ? 1 : 0), respuestasAgente: (antes.respuestasAgente || 0) + 1,
-    }), { expirationTtl: 400 * DIA });
+    }));
   }
 }
 
@@ -310,7 +367,7 @@ async function transcribir(env, url) {
 
 async function avisarTelegram(env, ev, titulo, motivo, resumen, respuesta) {
   if (!H || !H.telegram) return;
-  const m = ev.message || {}, tel = digitos((m.sender || {}).phoneNumber);
+  const m = ev.message || {}, tel = telefonoDe(m, ev.conversation);
   const nombre = (m.sender || {}).name || (ev.conversation || {}).participantName || "Cliente";
   const partes = [titulo, `<b>Cliente:</b> ${esc(nombre)}${tel ? ` (+${tel})` : ""}`];
   if (motivo) partes.push(`<b>Motivo:</b> ${esc(motivo)}`);
@@ -483,4 +540,37 @@ export async function ejecutar(nombre, inp, env, ctx = {}) {
     return res;
   }
   return { ok: false, error: "Herramienta desconocida" };
+}
+
+/* ---------------- 6. Diagnóstico ---------------- */
+export async function diagnosticoWhatsApp(request, env) {
+  const url = new URL(request.url), clave = url.searchParams.get("clave") || "";
+  const valida = [env.SALUD_CLAVE, env.ADMIN_CLAVE].filter(Boolean).includes(clave);
+  if (!valida) return new Response(JSON.stringify({ error: "Agrega ?clave= con tu SALUD_CLAVE o ADMIN_CLAVE" }), { status: 401, headers: { "content-type": "application/json" } });
+  const r = {
+    modo: modoAgente(env),
+    modelo: env.ANTHROPIC_MODEL || MODELO_DEFECTO,
+    configurado: { ZERNIO_WEBHOOK_SECRET: Boolean(env.ZERNIO_WEBHOOK_SECRET), ZERNIO_API_KEY: Boolean(env.ZERNIO_API_KEY), ANTHROPIC_API_KEY: Boolean(env.ANTHROPIC_API_KEY),
+      PAGO_NEQUI: Boolean(env.PAGO_NEQUI), memoria_por_chat: Boolean(env.CONVERSACIONES_WA), transcripcion_audios: Boolean(env.AI), telegram: Boolean(env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID) },
+    numerosDePrueba: lista(env.AGENTE_NUMEROS_PRUEBA).map(enmascarar),
+    excluidos: lista(env.AGENTE_EXCLUIDOS).length,
+  };
+  if (url.searchParams.get("revisar") === "1") {
+    r.pruebaEnVivo = {};
+    try {
+      const a = await fetch(ANTHROPIC, { method: "POST", signal: AbortSignal.timeout(20000),
+        headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: r.modelo, max_tokens: 5, messages: [{ role: "user", content: "Di: ok" }] }) });
+      r.pruebaEnVivo.anthropic = a.ok ? "funciona" : `falla ${a.status}: ${(await a.text()).slice(0, 300)}`;
+    } catch (e) { r.pruebaEnVivo.anthropic = "falla: " + String(e.message || e); }
+    try {
+      const z = await fetch(`${ZERNIO}/inbox/conversations?limit=1`, { headers: { Authorization: `Bearer ${env.ZERNIO_API_KEY || ""}` }, signal: AbortSignal.timeout(15000) });
+      r.pruebaEnVivo.zernio = z.ok ? "funciona" : `falla ${z.status}: ${(await z.text()).slice(0, 200)}`;
+    } catch (e) { r.pruebaEnVivo.zernio = "falla: " + String(e.message || e); }
+  }
+  if (env.CONVERSACIONES_WA) {
+    const d = env.CONVERSACIONES_WA.get(env.CONVERSACIONES_WA.idFromName("__diagnostico__"));
+    r.ultimasDecisiones = await (await d.fetch("https://agente/diag/leer")).json().catch(() => []);
+  }
+  return new Response(JSON.stringify(r, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 }

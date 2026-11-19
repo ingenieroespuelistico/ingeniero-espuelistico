@@ -23,9 +23,9 @@ import { atenderAdmin, resumenDiario } from "./admin.js";
 import { cuentaServicio, calendarioId, ocupado, crearEvento } from "./calendario.js";
 import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
-import { atenderWhatsApp, conectarAgente, modoAgente, ConversacionWA } from "./agente.js";
+import { atenderWhatsApp, diagnosticoWhatsApp, conectarAgente, modoAgente, ConversacionWA } from "./agente.js";
 
-const VERSION = "2026-11-18.1";
+const VERSION = "2026-11-19.1";
 const C = Tienda.Calculo;
 
 // Agente de WhatsApp: la "memoria" de cada chat (Durable Object) se exporta aquí y usa las mismas
@@ -74,6 +74,7 @@ export default {
     try {
       if (ruta === "/api/salud") return salud(url, env);
       if (ruta === "/api/whatsapp") return await atenderWhatsApp(request, env);
+      if (ruta === "/api/whatsapp/diagnostico") return await diagnosticoWhatsApp(request, env);
       if (ruta === "/api/mp-webhook") return await webhookMercadoPago(request, url, env, ctx);
       if (ruta === "/api/estado" && request.method === "GET") {
         if (!(await dentroDelLimite(request, env, ruta))) return error("Demasiadas solicitudes", 429);

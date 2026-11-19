@@ -86,6 +86,29 @@ await prueba("modo prueba: ignora a otros números y atiende el de prueba", asyn
   assert.ok(chat(env).st._a.alarma > Date.now());
 });
 
+await prueba("modo prueba: reconoce el número aunque Zernio no mande phoneNumber", async () => {
+  const env = nuevoEnv({ AGENTE_ACTIVO: "prueba", AGENTE_NUMEROS_PRUEBA: "+57 300-999-8888" });
+  await webhook(env, evento("message.received", { text: "hola", sender: { id: "573009998888", phoneNumber: null } }));
+  assert.ok(chat(env).st._a.alarma > Date.now(), "usa sender.id cuando phoneNumber viene vacío");
+  const env2 = nuevoEnv({ AGENTE_ACTIVO: "prueba", AGENTE_NUMEROS_PRUEBA: "CO.123456789ABCDEF" });
+  await webhook(env2, evento("message.received", { text: "hola", sender: { id: "CO.123456789ABCDEF", businessScopedUserId: "CO.123456789ABCDEF" } }));
+  assert.ok(chat(env2).st._a.alarma > Date.now(), "también acepta el identificador de Meta (BSUID)");
+});
+
+await prueba("diagnóstico: pide clave y explica por qué no respondió", async () => {
+  const env = nuevoEnv({ AGENTE_ACTIVO: "prueba", AGENTE_NUMEROS_PRUEBA: "573009998888", SALUD_CLAVE: "clave123" });
+  await webhook(env, evento("message.received", { text: "hola", sender: { phoneNumber: "+" + TEL } }));
+  await webhook(env, evento("message.received", { text: "hola" }), "firma-mala");
+  const sin = await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico"), env, ctx);
+  assert.equal(sin.status, 401);
+  const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=clave123"), env, ctx)).json();
+  assert.equal(r.modo, "prueba"); assert.equal(r.configurado.ANTHROPIC_API_KEY, true); assert.deepEqual(r.numerosDePrueba, ["57300…888"]);
+  assert.match(r.ultimasDecisiones[0].decision, /firma no coincide/);
+  assert.match(r.ultimasDecisiones[1].decision, /no es un número de prueba/);
+  assert.deepEqual(r.ultimasDecisiones[1].idsRecibidos, ["+5730…233"]);
+  assert.ok(!JSON.stringify(r).includes("hola"), "el diagnóstico no guarda el texto de los mensajes");
+});
+
 await prueba("aviso repetido de Zernio se procesa una sola vez", async () => {
   const env = nuevoEnv(), ev = evento("message.received", { text: "hola", sender: { phoneNumber: "+" + TEL } });
   await webhook(env, ev); await chat(env).st.delete("pendiente");
@@ -119,8 +142,9 @@ await prueba("flujo completo: cotiza con precios reales, cotiza envío y respond
   assert.match(e[0].message, /\$96\.000/); assert.equal(e[0].accountId, "cuenta1");
   assert.equal(e[1].attachmentUrl, "https://ingenieroespuelistico.com/fotos/acrilica/1.jpg");
   assert.deepEqual(await chat(env).st.get("mios"), ["wamid.AG1", "wamid.AG2"]);
-  const crm = JSON.parse(await env.PEDIDOS.get("wa:cliente:" + TEL));
-  assert.equal(crm.resumen, "24 pares acrílica 40 a Medellín");
+  const crm = await chat(env).st.get("perfil");
+  assert.equal(crm.resumen, "24 pares acrílica 40 a Medellín"); assert.equal(crm.telefono, TEL);
+  assert.equal(env.PEDIDOS._m.size, 0, "el agente no escribe en KV");
 });
 
 await prueba("los mensajes del propio agente no lo silencian", async () => {
