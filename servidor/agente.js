@@ -19,6 +19,8 @@
 // DIAGNÓSTICO: https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=<SALUD_CLAVE o ADMIN_CLAVE>
 //   muestra la configuración (sin valores secretos) y las últimas 60 decisiones del agente.
 //   Con &revisar=1 además prueba en vivo las claves de Anthropic y de Zernio.
+//   Con &liberarPrueba=1 desbloquea los chats de los números de prueba (para volver a probar después de
+//   responder tú desde el celular). Con &liberar=<id de conversación> desbloquea un chat cualquiera.
 
 import { CONOCIMIENTO } from "./agente-conocimiento.js";
 
@@ -33,6 +35,7 @@ const MAX_FOTOS = 4;
 const MAX_RESPUESTAS_HORA = 20;     // freno de gasto por chat
 const HISTORIAL = 30;               // mensajes de contexto
 const DIA = 86400;
+const AUTOMATICO_MS = 4000;          // un mensaje del celular que sale antes de esto tras el cliente es automático (bienvenida/ausencia)
 
 let H = null; // herramientas de la tienda (Tienda, fleteColombia, fleteDHL, tasaDolar, telegram), las conecta index.js
 export function conectarAgente(herramientas) { H = herramientas; }
@@ -164,6 +167,11 @@ export class ConversacionWA {
       return ok();
     }
     if (ruta === "/diag/leer") return new Response(JSON.stringify(((await s.get("diag")) || []).slice().reverse()), { headers: { "content-type": "application/json" } });
+    if (ruta === "/liberar") { // lo pide el diagnóstico (con clave): el agente vuelve a responder en este chat
+      await s.delete("humanoHasta"); await s.delete("pendiente"); await s.deleteAlarm();
+      await s.put("ignorarHumanoAntes", Date.now());
+      return ok();
+    }
     const ev = await request.json().catch(() => null);
     if (!ev) return ok();
     if (ev.id) { // Zernio puede repetir un aviso: se procesa una sola vez (sin gastar escrituras de KV)
@@ -183,6 +191,10 @@ export class ConversacionWA {
     const mios = (await s.get("mios")) || [];
     if ([m.platformMessageId, m.id].filter(Boolean).some((id) => mios.includes(id))) return;
     if (m.sentVia === "api" && ((await s.get("enviandoHasta")) || 0) > Date.now()) return; // es del agente (aviso adelantado)
+    const ultEnt = (await s.get("ultimoEntrante")) || 0, tSal = tiempoDe(m) || Date.now();
+    if (ultEnt && tSal >= ultEnt && tSal - ultEnt <= AUTOMATICO_MS) {
+      return anotar(this.env, { ...resumenEv(ev), decision: `ignorado: parece mensaje automático de la app (salió ${Math.round((tSal - ultEnt) / 1000)} s después del cliente)` });
+    }
     await anotar(this.env, { ...resumenEv(ev), decision: `Alexander escribió (${fuenteDe(m) || m.sentVia || "origen desconocido"}): el agente calla ${HUMANO_HORAS} h en este chat` });
     await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
     await s.delete("pendiente");
@@ -194,15 +206,18 @@ export class ConversacionWA {
     if (md === "no") return;
     const m = ev.message || {}, conv = ev.conversation || {};
     const cid = m.conversationId || conv.id;
+    const s = this.state.storage;
+    await s.put("ultimoEntrante", tiempoDe(m) || Date.now());
     if (lista(env.AGENTE_EXCLUIDOS).includes(cid)) return anotar(env, { ...resumenEv(ev), decision: "ignorado: conversación excluida" });
+    const marca = md === "prueba" ? { prueba: true, cid } : {};
     if (md === "prueba" && !esDePrueba(env, m, conv)) {
       return anotar(env, { ...resumenEv(ev), decision: "modo prueba: no es un número de prueba", idsRecibidos: idsRemitente(m, conv).map(enmascarar) });
     }
-    const s = this.state.storage;
-    if (((await s.get("humanoHasta")) || 0) > Date.now()) return anotar(env, { ...resumenEv(ev), decision: "en manos de Alexander: el agente no responde aquí todavía" });
+    const hasta = (await s.get("humanoHasta")) || 0;
+    if (hasta > Date.now()) return anotar(env, { ...resumenEv(ev), ...marca, decision: `en manos de Alexander hasta las ${horaCO(hasta).slice(11)}: el agente no responde aquí todavía` });
     await s.put("pendiente", ev);
     await s.setAlarm(Date.now() + ESPERA_MS); // cada mensaje nuevo corre la alarma: se responde una vez
-    await anotar(env, { ...resumenEv(ev), decision: `recibido: responde en ~${ESPERA_MS / 1000} s si no llegan más mensajes` });
+    await anotar(env, { ...resumenEv(ev), ...marca, decision: `recibido: responde en ~${ESPERA_MS / 1000} s si no llegan más mensajes` });
   }
 
   async alarm() {
@@ -250,11 +265,15 @@ async function atender(ev, env, s) {
   // ¿Alguien ya respondió después de este mensaje? ¿Alexander escribió en las últimas horas?
   const mios = (await s.get("mios")) || [];
   const delAgente = (x) => mios.includes(x.id) || x.sentVia === "api";
-  const salientesReales = hist.filter((x) => x.direction === "outgoing" && !esAutomatico(x));
-  if (salientesReales.some((x) => tiempoDe(x) > tEste)) return anotar(env, { ...resumenEv(ev), decision: "no responde: ya se respondió después de ese mensaje" });
-  if (salientesReales.some((x) => !delAgente(x) && Date.now() - tiempoDe(x) < HUMANO_HORAS * 3600e3)) {
+  const ignorarAntes = (await s.get("ignorarHumanoAntes")) || 0;
+  const marca = modoAgente(env) === "prueba" ? { prueba: true, cid } : {};
+  const salientesReales = hist.filter((x) => x.direction === "outgoing" && !esAutomatico(x) && !esRespuestaAutomatica(x, hist));
+  if (salientesReales.some((x) => tiempoDe(x) > tEste)) return anotar(env, { ...resumenEv(ev), ...marca, decision: "no responde: ya se respondió después de ese mensaje" });
+  const bloqueo = salientesReales.filter((x) => !delAgente(x) && tiempoDe(x) > ignorarAntes && Date.now() - tiempoDe(x) < HUMANO_HORAS * 3600e3).pop();
+  if (bloqueo) {
     await s.put("humanoHasta", Date.now() + HUMANO_HORAS * 3600e3);
-    return anotar(env, { ...resumenEv(ev), decision: `no responde: Alexander escribió en este chat en las últimas ${HUMANO_HORAS} h` });
+    return anotar(env, { ...resumenEv(ev), ...marca, decision: `no responde: Alexander escribió en este chat en las últimas ${HUMANO_HORAS} h`,
+      mensajeQueBloquea: { hora: horaCO(tiempoDe(bloqueo)), origen: fuenteDe(bloqueo) || bloqueo.sentVia || "desconocido" } });
   }
 
   // Audios del último turno del cliente
@@ -321,6 +340,13 @@ Responde al último turno del cliente. Usa las herramientas para cualquier preci
       cesiones: (antes.cesiones || 0) + (decision.ceder ? 1 : 0), respuestasAgente: (antes.respuestasAgente || 0) + 1,
     }));
   }
+}
+
+// ¿Salió del celular apenas unos segundos después del mensaje del cliente? Entonces lo mandó la app sola.
+function esRespuestaAutomatica(x, hist) {
+  const t = tiempoDe(x); let prev = 0;
+  for (const y of hist) { const ty = tiempoDe(y); if (y.direction === "incoming" && ty <= t && ty > prev) prev = ty; }
+  return Boolean(prev) && t - prev <= AUTOMATICO_MS;
 }
 
 function lineaHistorial(x) {
@@ -570,7 +596,20 @@ export async function diagnosticoWhatsApp(request, env) {
   }
   if (env.CONVERSACIONES_WA) {
     const d = env.CONVERSACIONES_WA.get(env.CONVERSACIONES_WA.idFromName("__diagnostico__"));
-    r.ultimasDecisiones = await (await d.fetch("https://agente/diag/leer")).json().catch(() => []);
+    const leer = async () => (await d.fetch("https://agente/diag/leer")).json().catch(() => []);
+    let decisiones = await leer();
+    const liberar = new Set();
+    if (url.searchParams.get("liberarPrueba") === "1") for (const e of decisiones) if (e.prueba && e.cid) liberar.add(e.cid);
+    if (url.searchParams.get("liberar")) liberar.add(url.searchParams.get("liberar"));
+    if (liberar.size) {
+      for (const cid of liberar) {
+        await env.CONVERSACIONES_WA.get(env.CONVERSACIONES_WA.idFromName(cid)).fetch("https://agente/liberar", { method: "POST" });
+        await anotar(env, { chat: cid.slice(-6), decision: "liberado: el agente vuelve a responder en este chat" });
+      }
+      r.liberados = liberar.size;
+      decisiones = await leer();
+    }
+    r.ultimasDecisiones = decisiones.map(({ cid, prueba, ...resto }) => (prueba ? { ...resto, prueba: true } : resto));
   }
   return new Response(JSON.stringify(r, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 }
