@@ -26,6 +26,9 @@
   },
   // Base de pedidos y clientes (espacio KV "ie_pedidos")
   "kv_namespaces": [{ "binding": "PEDIDOS", "id": "f0afa9fa377c4c6fae242f1f57aac709" }],
+  // Agente de WhatsApp: una "memoria" por conversación (Durable Object). Cloudflare la crea sola al publicar.
+  "durable_objects": { "bindings": [{ "name": "CONVERSACIONES_WA", "class_name": "ConversacionWA" }] },
+  "migrations": [{ "tag": "v1-agente-whatsapp", "new_sqlite_classes": ["ConversacionWA"] }],
   // Tareas programadas (hora UTC): carritos sin pagar cada 20 minutos y resumen diario a las 7:00 a. m. de Colombia
   "triggers": { "crons": ["*/20 * * * *", "0 12 * * *"] },
   // Workers AI: pasa a texto las notas de voz de la app de pedidos y las convierte en acciones
