@@ -9,7 +9,7 @@ const { ConversacionWA } = worker;
 const { ejecutar, paisPorNumero } = await import("../servidor/agente.js");
 
 /* ---------- simulaciones ---------- */
-let llamadas = [], guion = [], historial = [], nEnv = 0, enviaFalla = false;
+let llamadas = [], guion = [], historial = [], nEnv = 0, enviaFalla = false, ocupadoGoogle = [];
 const J = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } });
 globalThis.fetch = async (url, op = {}) => {
   url = String(url && url.url ? url.url : url);
@@ -26,6 +26,9 @@ globalThis.fetch = async (url, op = {}) => {
     { service: "mensajeria_do", totalPrice: 11800, carrierDescription: "Interrapidísimo", serviceDescription: "Domicilio - Oficina", carrier: "interRapidisimo" }] });
   if (url.startsWith("https://open.er-api.com/")) return J({ rates: { COP: 4000 } });
   if (url.startsWith("https://media.prueba/")) return new Response(new Uint8Array(4000));
+  if (url === "https://oauth2.googleapis.com/token") return J({ access_token: "g1", expires_in: 3600 });
+  if (url === "https://www.googleapis.com/calendar/v3/freeBusy") return J({ calendars: { "cal@prueba": { busy: ocupadoGoogle } } });
+  if (url.startsWith("https://www.googleapis.com/calendar/v3/calendars/") && metodo === "POST") return J({ id: "ev1", htmlLink: "https://calendar.prueba/ev1" });
   if (url.startsWith("https://lento.prueba/")) throw new TypeError("Network connection lost");
   if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/medjson")) return J({ url: "https://media.prueba/c.ogg" });
   if (url.startsWith("https://zernio.com/api/v1/whatsapp/media/medogg")) { const b = new Uint8Array(8000); b.set([79, 103, 103, 83]); return new Response(b, { headers: { "content-type": "application/octet-stream" } }); }
@@ -173,7 +176,7 @@ await prueba("flujo completo: cotiza con precios reales, cotiza envío y respond
   assert.equal(m.length, 3);
   assert.match(m[0].system, /DATOS DE LA TIENDA/);
   assert.match(m[0].system, /acrilica → Espuela acrílica amarilla.*Minorista \$4\.000/);
-  assert.match(m[0].system, /Nequi 300 000 0000/);
+  assert.ok(!m[0].system.includes("300 000 0000"), "el agente ya no tiene los datos de pago: los da Alexander");
   assert.match(m[0].messages[0].content, /País por el número: Colombia/);
   const r1 = JSON.parse(m[1].messages.at(-1).content[0].content);
   assert.equal(r1.subtotal_cop, 96000); assert.equal(r1.nivel, "Minorista"); assert.equal(r1.falta_minimo, null);
@@ -367,6 +370,75 @@ await prueba("audio sin id con enlace incompleto (/api/v1/...): se completa con 
   assert.match(h, /url=lento\.prueba\/notas\/….ogg/); assert.match(h, /error Network connection lost/);
   assert.ok(!h.includes("secreta"), "no guarda los parámetros del enlace");
   assert.match(envios()[0].message, /no logré escuchar su audio/, "si no se puede descargar, cede como siempre");
+});
+
+await prueba("Talía: se presenta como IA en el primer mensaje del chat (aunque el modelo lo olvide) y no en los siguientes", async () => {
+  const env = nuevoEnv();
+  historial = [{ id: "t1", direction: "incoming", message: "buenas, precio de las espuelas", sentAt: new Date(Date.now() - 60000).toISOString() }];
+  guion = [responder({ mensaje: "Buenas tardes mi amigo, le manejamos 4 espuelas." })];
+  await webhook(env, evento("message.received", { text: historial[0].message, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env).obj.alarm();
+  assert.match(alModelo()[0].system, /Te llamas Talía y eres la asistente con inteligencia artificial de Alexander/);
+  assert.match(alModelo()[0].messages[0].content, /Primera respuesta tuya en este chat: sí/);
+  assert.match(envios()[0].message, /^Le habla \*Talía\* 🤖, la asistente con inteligencia artificial de Alexander\.\nBuenas tardes/);
+  llamadas = [];
+  historial.push({ id: "t2", direction: "outgoing", message: envios.length ? "Le habla Talía..." : "", sentVia: "api", sentAt: new Date(Date.now() - 30000).toISOString() },
+    { id: "t3", direction: "incoming", message: "y en caja?", sentAt: new Date().toISOString() });
+  guion = [responder({ mensaje: "En caja vale un poco más." })];
+  await webhook(env, evento("message.received", { text: "y en caja?", sender: { phoneNumber: "+" + TEL }, sentAt: historial[2].sentAt }));
+  await chat(env).obj.alarm();
+  assert.match(alModelo()[0].messages[0].content, /Primera respuesta tuya en este chat: no/);
+  assert.equal(envios()[0].message, "En caja vale un poco más.");
+  reiniciar();
+  const env2 = nuevoEnv({ AGENTE_NOMBRE: "Luna" });
+  historial = [{ id: "t4", direction: "incoming", message: "hola", sentAt: new Date().toISOString() }];
+  guion = [responder({ mensaje: "Buenas, le habla Luna 🤖, la asistente con inteligencia artificial de Alexander." })];
+  await webhook(env2, evento("message.received", { text: "hola", sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env2).obj.alarm();
+  assert.match(alModelo()[0].system, /Te llamas Luna/);
+  assert.ok(!/Talía/.test(envios()[0].message), "si el modelo ya se presentó, no se repite");
+});
+
+await prueba("llamada sin agenda en línea: pide día y hora y le manda la solicitud a Alexander por Telegram", async () => {
+  const env = nuevoEnv();
+  const h = await ejecutar("horarios_llamada", {}, env, { registro: [] });
+  assert.equal(h.agenda_activa, false); assert.match(h.horario_llamadas, /lunes a viernes de 8:00 a\. m\. a 3:00 p\. m\./);
+  const reg = [];
+  const a = await ejecutar("agendar_llamada", { nombre: "Pedro", preferencia: "mañana a las 10 a. m.", tema: "precio por mayor" }, env, { tel: TEL, paisNombre: "Colombia", registro: reg });
+  assert.equal(a.ok, true); assert.equal(a.confirmada, false);
+  assert.match(telegrams()[0], /SOLICITUD DE LLAMADA[\s\S]*Pedro[\s\S]*\+573001112233[\s\S]*mañana a las 10/);
+  assert.match(reg[0], /solicitud enviada/);
+  const sinTel = await ejecutar("agendar_llamada", { nombre: "Pedro", preferencia: "hoy" }, env, { tel: "", registro: [] });
+  assert.equal(sinTel.ok, false);
+});
+
+await prueba("llamada con Google Calendar: ofrece horarios libres, agenda y la página web sigue agendando igual", async () => {
+  const par = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
+  const pem = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(await crypto.subtle.exportKey("pkcs8", par.privateKey)).toString("base64")}\n-----END PRIVATE KEY-----\n`;
+  const env = nuevoEnv({ GOOGLE_CUENTA_SERVICIO: JSON.stringify({ client_email: "agenda@prueba.iam", private_key: pem }), GOOGLE_CALENDARIO: "cal@prueba" });
+  const bloqueadoHasta = Date.now() + 30 * 3600e3;
+  ocupadoGoogle = [{ start: new Date(Date.now() - 3600e3).toISOString(), end: new Date(bloqueadoHasta).toISOString() }];
+  const h = await ejecutar("horarios_llamada", {}, env, { registro: [] });
+  assert.equal(h.agenda_activa, true); assert.ok(h.horarios.length >= 2);
+  const instante = (x) => Date.UTC(...x.dia.split("-").map((n, i) => Number(n) - (i === 1 ? 1 : 0)), 5, 0) + x.minutos * 60000;
+  assert.ok(h.horarios.every((x) => instante(x) >= bloqueadoHasta), "no ofrece horas ocupadas en el calendario");
+  assert.ok(h.horarios.every((x) => typeof x.texto === "string" && x.texto.length > 5));
+  const ctxA = { tel: TEL, paisNombre: "Colombia", registro: [] };
+  const a = await ejecutar("agendar_llamada", { nombre: "Pedro", dia: h.horarios[0].dia, minutos: h.horarios[0].minutos, tema: "quiere ser distribuidor" }, env, ctxA);
+  assert.equal(a.ok, true); assert.equal(a.confirmada, true); assert.equal(ctxA.llamada, a.cuando);
+  const ev = JSON.parse(llamadas.find((l) => l.url.startsWith("https://www.googleapis.com/calendar/v3/calendars/")).cuerpo);
+  assert.match(ev.summary, /Llamar a Pedro/); assert.match(ev.description, /Agendada desde WhatsApp \(agendada por Talía\)/); assert.match(ev.description, /distribuidor/);
+  assert.match(telegrams().at(-1), /LLAMADA AGENDADA[\s\S]*Pedro/);
+  // Máximo 2 llamadas por número al día
+  await ejecutar("agendar_llamada", { nombre: "Pedro", dia: h.horarios[1].dia, minutos: h.horarios[1].minutos }, env, { tel: TEL, registro: [] });
+  const tercera = await ejecutar("agendar_llamada", { nombre: "Pedro", dia: h.horarios[1].dia, minutos: h.horarios[1].minutos }, env, { tel: TEL, registro: [] });
+  assert.equal(tercera.ok, false); assert.match(tercera.error, /ya tiene llamadas agendadas/);
+  // La página web agenda con el mismo núcleo
+  const w = await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/agenda", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ nombre: "Ana", pais: "Colombia", celular: "+573005556677", dia: h.horarios[1].dia, hora: h.horarios[1].minutos, acepto: true }) }), env, ctx);
+  const wj = await w.json();
+  assert.equal(w.status, 200, JSON.stringify(wj)); assert.equal(wj.ok, true);
+  assert.match(telegrams().at(-1), /Agendada desde la página web/);
 });
 
 await prueba("herramientas: mínimo, regalo, colores, oficina, internacional y EE. UU.", async () => {

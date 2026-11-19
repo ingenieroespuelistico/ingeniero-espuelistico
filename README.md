@@ -18,5 +18,7 @@ Cloudflare (Worker con archivos estáticos, ver `wrangler.jsonc`) publica la car
 - `servidor/agente.js` — recibe los avisos de Zernio en `POST /api/whatsapp`, responde con el modelo y cotiza con las mismas funciones de la tienda. Una "memoria" por chat (Durable Object `ConversacionWA`).
 - `servidor/agente-conocimiento.js` — tono, recorrido de venta y reglas (sale del análisis de 596 chats reales). Los precios NO van ahí: se leen de `sitio/js/precios.js`.
 - Encendido: variable `AGENTE_ACTIVO` en Cloudflare (`no` / `prueba` / `si`). Ver el encabezado de `servidor/agente.js`.
+- Nombre de la asistente: variable `AGENTE_NOMBRE` (si no está, "Talía"). Se presenta como IA en la primera respuesta de cada chat.
+- Llamadas: el agente agenda con la misma agenda de la página (Google Calendar, `GOOGLE_CUENTA_SERVICIO`). Sin agenda activa, le manda la solicitud a Alexander por Telegram.
 - Pruebas sin internet: `node servidor/generar-catalogo.mjs && node pruebas/agente.prueba.mjs`.
 - **Nunca** subir chats de clientes a este repositorio: es público.
