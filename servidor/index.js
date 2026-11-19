@@ -25,7 +25,7 @@ import { enviarConfirmacion, correoValido } from "./correo.js";
 import { crearPQR, consultarPQR } from "./pqr.js";
 import { atenderWhatsApp, diagnosticoWhatsApp, conectarAgente, modoAgente, ConversacionWA } from "./agente.js";
 
-const VERSION = "2026-11-19.2";
+const VERSION = "2026-11-19.3";
 const C = Tienda.Calculo;
 
 // Agente de WhatsApp: la "memoria" de cada chat (Durable Object) se exporta aquí y usa las mismas
@@ -170,13 +170,20 @@ const texto = (v, max) => String(v ?? "").replace(/[\u0000-\u001f<>]/g, " ").tri
 const pesos = (n) => "$" + Math.round(n).toLocaleString("es-CO");
 const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
+// Si la caché no está disponible o falla (por ejemplo, dentro del agente de WhatsApp), se calcula sin caché
 async function enCache(clave, segundos, crear) {
-  const cache = caches.default;
+  let cache = null;
+  try { cache = caches.default; } catch (e) { cache = null; }
   const req = new Request(`https://cache.interno/${encodeURIComponent(clave)}`);
-  const previo = await cache.match(req);
-  if (previo) return previo.json();
+  if (cache) {
+    try { const previo = await cache.match(req); if (previo) return await previo.json(); }
+    catch (e) { console.log("caché no disponible", e && e.message); cache = null; }
+  }
   const valor = await crear();
-  if (valor) await cache.put(req, new Response(JSON.stringify(valor), { headers: { "Cache-Control": `max-age=${segundos}`, "Content-Type": "application/json" } }));
+  if (valor && cache) {
+    try { await cache.put(req, new Response(JSON.stringify(valor), { headers: { "Cache-Control": `max-age=${segundos}`, "Content-Type": "application/json" } })); }
+    catch (e) { console.log("caché no disponible", e && e.message); }
+  }
   return valor;
 }
 
@@ -208,8 +215,10 @@ function cajaPara(gramos) {
 }
 
 async function fleteColombia({ lineas, departamento, ciudad, destinatario, contraentrega, servicio }, env) {
+  if (!env.ENVIA_TOKEN) return { ok: false, causa: "configuracion", error: "Por ahora te cotizamos el envío por WhatsApp.", detalle: "Falta ENVIA_TOKEN en este Worker" };
+  if (!codigoDepartamento(departamento)) return { ok: false, causa: "departamento", error: "Elige tu departamento." };
   const dane = await codigoDANE(departamento, ciudad);
-  if (!dane) return { ok: false, error: "No encontramos tu municipio en la transportadora. Escríbenos por WhatsApp y te cotizamos." };
+  if (!dane) return { ok: false, causa: "municipio", error: "No encontramos tu municipio en la transportadora. Escríbenos por WhatsApp y te cotizamos." };
   const gramos = C.pesoGramos(lineas);
   const valor = C.subtotal(lineas);
   const caja = cajaPara(gramos);
@@ -218,6 +227,7 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario, contr
   const servicioPedido = servicio || cfg.servicio; // "mensajeria_do" = recoger en oficina (lo usa el agente)
   const clave = `flete2:${dane.city}:${kg}:${caja.largo}x${caja.ancho}x${caja.alto}:${contraentrega ? "cod" + Math.round(valor) : Math.ceil(valor / 50000)}${servicioPedido !== cfg.servicio ? ":" + servicioPedido : ""}`;
 
+  let fallo = "";
   const mejor = await enCache(clave, 1800, async () => {
     const destino = {
       name: texto(destinatario && destinatario.nombre, 60) || "Cliente", phone: texto(destinatario && destinatario.celular, 20).replace(/\D/g, "").slice(-10) || "3000000000",
@@ -236,9 +246,9 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario, contr
       body: JSON.stringify({ origin: ORIGEN, destination: destino, packages: [paquete], shipment: { type: 1, carrier: cfg.transportadora }, settings: { currency: "COP" } }),
     });
     const d = await r.json().catch(() => null);
-    if (!r.ok || !d || !Array.isArray(d.data)) { console.log("Envia sin tarifa", r.status, JSON.stringify(d).slice(0, 300)); return null; }
+    if (!r.ok || !d || !Array.isArray(d.data)) { fallo = `Envia ${r.status}: ${JSON.stringify(d).slice(0, 250)}`; console.log("Envia sin tarifa", fallo); return null; }
     const t = d.data.find((x) => x.service === servicioPedido) || d.data[0];
-    if (!t || !(Number(t.totalPrice) > 0)) return null;
+    if (!t || !(Number(t.totalPrice) > 0)) { fallo = `Envia sin precio para el servicio ${servicioPedido}`; return null; }
     const recaudo = contraentrega ? Number(t.cashOnDeliveryCommission || 0) : 0;
     return {
       transportadora: t.carrierDescription || "Interrapidísimo", servicio: t.serviceDescription || t.service || "",
@@ -246,7 +256,7 @@ async function fleteColombia({ lineas, departamento, ciudad, destinatario, contr
     };
   });
 
-  if (!mejor) return { ok: false, error: "No pudimos cotizar el envío a tu municipio. Escríbenos por WhatsApp y te lo cotizamos." };
+  if (!mejor) return { ok: false, causa: "tarifa", error: "No pudimos cotizar el envío a tu municipio. Escríbenos por WhatsApp y te lo cotizamos.", detalle: fallo };
   const paso = cfg.redondearA || 1;
   const cobro = Math.ceil((mejor.precio + (cfg.recargo || 0)) / paso) * paso;
   return {
@@ -411,7 +421,7 @@ async function cotizar(cuerpo, env) {
   if (cuerpo.pais && cuerpo.pais !== "CO") return cotizarInternacional(lineas, cuerpo, env);
   const contraentrega = cuerpo.pago === "contraentrega";
   const r = await fleteColombia({ lineas, departamento: texto(cuerpo.departamento, 80), ciudad: texto(cuerpo.ciudad, 80), contraentrega }, env);
-  if (!r.ok) return json(r, 200);
+  if (!r.ok) return json({ ok: false, error: r.error }, 200); // el detalle interno de Envia no se muestra en la página
   const { carrier, service, dane, ...publico } = r;
   return json(publico);
 }
