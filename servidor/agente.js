@@ -168,6 +168,17 @@ export class ConversacionWA {
       return ok();
     }
     if (ruta === "/diag/leer") return new Response(JSON.stringify(((await s.get("diag")) || []).slice().reverse()), { headers: { "content-type": "application/json" } });
+    if (ruta === "/diag/probar-envio") { // lo pide el diagnóstico con revisar=1: cotiza aquí adentro, igual que cuando atiende un chat
+      const registro = [], ctx = { registro };
+      const prueba = async (nombre, inp) => { try { return await ejecutar(nombre, inp, this.env, ctx); } catch (e) { registro.push(`${nombre}: ERROR ${String((e && e.message) || e).slice(0, 160)}`); return { ok: false }; } };
+      const col = await prueba("cotizar_envio_colombia", { lineas: [], municipio: "Medellín", departamento: "Antioquia" });
+      const int = await prueba("cotizar_envio_internacional", { lineas: [], pais: "EC", ciudad: "Quito", region: "Pichincha" });
+      return new Response(JSON.stringify({
+        colombia: col.ok ? `funciona: ${pesos(col.valor_envio_cop)} a Medellín (pedido mínimo)` : "falla",
+        dhl: int.dhl && int.dhl.usd ? `funciona: USD ${int.dhl.usd} a Quito (pedido mínimo)` : "falla",
+        detalle: registro,
+      }), { headers: { "content-type": "application/json" } });
+    }
     if (ruta === "/liberar") { // lo pide el diagnóstico (con clave): el agente vuelve a responder en este chat
       await s.delete("humanoHasta"); await s.delete("pendiente"); await s.deleteAlarm();
       await s.put("ignorarHumanoAntes", Date.now());
@@ -311,7 +322,8 @@ ${hist.slice(-HISTORIAL).map(lineaHistorial).join("\n")}
 
 Responde al último turno del cliente. Usa las herramientas para cualquier precio o envío y termina SIEMPRE con la herramienta responder.`;
 
-  const decision = await pensar(env, sistema, pedido, { pais: pais.iso });
+  const herramientas = [];
+  const decision = await pensar(env, sistema, pedido, { pais: pais.iso, registro: herramientas });
 
   // Enviar
   const texto = String(decision.mensaje || "").trim().slice(0, 1500);
@@ -338,7 +350,8 @@ Responde al último turno del cliente. Usa las herramientas para cualquier preci
     await avisarTelegram(env, ev, "👀 <b>Pendiente de este cliente</b> (el agente sigue atendiendo)", decision.motivo_aviso, decision.resumen, texto);
   }
 
-  await anotar(env, { ...resumenEv(ev), decision: `respondió (${enviados.filter(Boolean).length} mensaje(s))${decision.ceder ? ", cedió a Alexander: " + (decision.motivo_cesion || "") : ""}${decision.avisar ? ", avisó a Alexander" : ""}` });
+  await anotar(env, { ...resumenEv(ev), decision: `respondió (${enviados.filter(Boolean).length} mensaje(s))${decision.ceder ? ", cedió a Alexander: " + (decision.motivo_cesion || "") : ""}${decision.avisar ? ", avisó a Alexander" : ""}`,
+    ...(herramientas.length ? { herramientas: herramientas.slice(0, 8) } : {}) });
 
   // CRM mínimo, en la memoria del chat (no gasta escrituras de KV)
   {
@@ -463,13 +476,13 @@ const LINEAS = {
 const HERRAMIENTAS = [
   { name: "cotizar_productos", description: "Calcula precios, total, nivel, mínimo y regalos de un pedido con los precios reales de la tienda. Úsala siempre antes de dar un total.",
     input_schema: { type: "object", required: ["lineas"], properties: { lineas: LINEAS } } },
-  { name: "cotizar_envio_colombia", description: "Valor del envío con Interrapidísimo a un municipio de Colombia. Necesita municipio y departamento.",
-    input_schema: { type: "object", required: ["lineas", "municipio", "departamento"], properties: {
+  { name: "cotizar_envio_colombia", description: "Valor del envío con Interrapidísimo a un municipio de Colombia. Necesita municipio y departamento. Si el cliente aún no define el pedido, manda lineas vacío: se cotiza un pedido mínimo y lo dices como valor \"desde\".",
+    input_schema: { type: "object", required: ["municipio", "departamento"], properties: {
       lineas: LINEAS, municipio: { type: "string" }, departamento: { type: "string", description: "Nombre oficial completo, ej. Valle del Cauca, Norte de Santander, La Guajira, Bogotá D.C." },
       contraentrega: { type: "boolean", description: "true si el cliente paga los productos al recibir" },
       recoger_en_oficina: { type: "boolean", description: "true solo si no quiere entrega a domicilio o la zona solo tiene oficina" } } } },
-  { name: "cotizar_envio_internacional", description: "Envío fuera de Colombia: envío propio (si aplica) y DHL según la ciudad.",
-    input_schema: { type: "object", required: ["lineas", "pais"], properties: {
+  { name: "cotizar_envio_internacional", description: "Envío fuera de Colombia: envío propio (si aplica) y DHL según la ciudad. Si el cliente aún no define el pedido, manda lineas vacío: se cotiza un pedido mínimo.",
+    input_schema: { type: "object", required: ["pais"], properties: {
       lineas: LINEAS, pais: { type: "string", description: "Código ISO de 2 letras, ej. PA, CR, VE, EC, PE, MX" },
       ciudad: { type: "string" }, region: { type: "string", description: "Provincia, departamento o estado" }, postal: { type: "string" } } } },
   { name: "responder", description: "Respuesta final para el cliente. Llámala siempre al terminar.",
@@ -506,7 +519,10 @@ async function pensar(env, sistema, pedido, ctx) {
     for (const u of usos) {
       let salida;
       try { salida = await ejecutar(u.name, u.input || {}, env, ctx); }
-      catch (e) { salida = { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
+      catch (e) {
+        salida = { ok: false, error: "Falla temporal de la herramienta. Dile al cliente que Alexander le confirma ese dato y marca avisar = true." };
+        if (ctx.registro) ctx.registro.push(`${u.name}: ERROR ${String((e && e.message) || e).slice(0, 160)}`);
+      }
       resultados.push({ type: "tool_result", tool_use_id: u.id, content: JSON.stringify(salida) });
     }
     mensajes.push({ role: "user", content: resultados });
@@ -527,7 +543,7 @@ function opcionesDe(p) {
 function lineasDesde(entrada) {
   const C = H.Tienda.Calculo, limpias = [], errores = [];
   for (const l of (Array.isArray(entrada) ? entrada : []).slice(0, 30)) {
-    const x = C.limpiarLinea({ presentacion: "bolsa", ...l });
+    const x = C.limpiarLinea({ ...l, presentacion: (l && l.presentacion) || "bolsa" });
     const p = C.prod(x.producto);
     if (p && C.lineaValida(x)) limpias.push(x);
     else errores.push({ linea: l, opciones: opcionesDe(p) });
@@ -535,11 +551,39 @@ function lineasDesde(entrada) {
   return { limpias, errores };
 }
 
+// Para cotizar un envío basta el peso aproximado: si faltan medida, color o cantidad se completan, y sin productos se usa el pedido mínimo
+function completarParaEnvio(entrada) {
+  const T = H.Tienda, out = [];
+  const minEsp = (T.MINIMO_PARES && T.MINIMO_PARES.espuela) || 12, minPata = (T.MINIMO_PARES && T.MINIMO_PARES.patapioja) || 12;
+  let completado = false;
+  for (const l of (Array.isArray(entrada) ? entrada : []).slice(0, 30)) {
+    const p = T.PRODUCTOS.find((x) => x.id === (l && l.producto));
+    if (!p) continue;
+    const x = { ...l };
+    if (!(Math.floor(Number(x.cantidad)) >= 1)) { x.cantidad = p.tipo === "espuela" ? minEsp : p.tipo === "patapioja" ? minPata : 1; completado = true; }
+    if (p.tipo === "espuela") {
+      if (!p.medidas.includes(Number(x.medida))) { x.medida = p.medidas.includes(40) ? 40 : p.medidas[0]; completado = true; }
+      if (!(T.PRESENTACIONES || []).some((y) => y.id === x.presentacion)) x.presentacion = "bolsa";
+    } else if (p.tipo === "patapioja") { if (!p.colores.some((c) => c.id === x.color)) x.color = p.colores[0].id; }
+    else if (!(p.variantes || []).some((v) => v.id === x.variante)) { x.variante = (p.variantes || [{}])[0].id; completado = true; }
+    out.push(x);
+  }
+  if (!out.length) {
+    const e = T.PRODUCTOS.find((p) => p.tipo === "espuela");
+    return { lineas: [{ producto: e.id, cantidad: minEsp, medida: e.medidas.includes(40) ? 40 : e.medidas[0], presentacion: "bolsa" }], supuesto: `un pedido mínimo de ${minEsp} pares de espuela` };
+  }
+  return { lineas: out, supuesto: completado ? "faltaban datos del pedido y se completaron para estimar el peso" : "" };
+}
+
 export async function ejecutar(nombre, inp, env, ctx = {}) {
   const T = H.Tienda, C = T.Calculo;
-  const { limpias, errores } = lineasDesde(inp.lineas);
-  if (errores.length) return { ok: false, error: "Hay productos con datos inválidos: corrige o pregúntale al cliente", errores };
-  if (!limpias.length) return { ok: false, error: "No hay productos en el pedido" };
+  const reg = (txt) => { if (ctx.registro) ctx.registro.push(`${nombre}: ${txt}`); };
+  const esEnvio = nombre === "cotizar_envio_colombia" || nombre === "cotizar_envio_internacional";
+  const base = esEnvio ? completarParaEnvio(inp.lineas) : { lineas: inp.lineas, supuesto: "" };
+  const estimado = base.supuesto ? { estimado: `Valor estimado con ${base.supuesto}: dilo como "desde" y aclara que el valor final depende del pedido.` } : {};
+  const { limpias, errores } = lineasDesde(base.lineas);
+  if (errores.length) { reg("productos con datos inválidos"); return { ok: false, error: "Hay productos con datos inválidos: corrige o pregúntale al cliente", errores }; }
+  if (!limpias.length) { reg("sin productos"); return { ok: false, error: "No hay productos en el pedido" }; }
 
   if (nombre === "cotizar_productos") {
     const pares = C.paresEspuela(limpias), subtotal = Math.round(C.subtotal(limpias));
@@ -566,31 +610,40 @@ export async function ejecutar(nombre, inp, env, ctx = {}) {
       contraentrega_disponible: subtotal >= T.CONTRAENTREGA_MINIMO, peso_gramos: C.pesoGramos(limpias),
     };
     if (ctx.pais && ctx.pais !== "CO" && H.tasaDolar) { const tasa = await H.tasaDolar(env); res.subtotal_usd_aprox = Math.round((subtotal / tasa) * 100) / 100; }
+    reg(`ok (${pares} pares de espuela)`);
     return res;
   }
 
   if (nombre === "cotizar_envio_colombia") {
-    if (!inp.municipio || !inp.departamento) return { ok: false, error: "Falta el municipio o el departamento: pregúntaselo al cliente" };
+    if (!inp.municipio || !inp.departamento) { reg("falta municipio o departamento"); return { ok: false, error: "Falta el municipio o el departamento: pregúntaselo al cliente" }; }
     const subtotal = C.subtotal(limpias);
-    if (inp.contraentrega && subtotal < T.CONTRAENTREGA_MINIMO) return { ok: false, error: `La contraentrega es desde ${pesos(T.CONTRAENTREGA_MINIMO)}; este pedido suma ${pesos(subtotal)}.` };
+    if (inp.contraentrega && subtotal < T.CONTRAENTREGA_MINIMO) { reg("contraentrega por debajo del mínimo"); return { ok: false, error: `La contraentrega es desde ${pesos(T.CONTRAENTREGA_MINIMO)}; este pedido suma ${pesos(subtotal)}.` }; }
     const oficina = Boolean(inp.recoger_en_oficina);
     const depto = ALIAS_DEPTO[String(inp.departamento).trim().toLowerCase()] || String(inp.departamento);
     const r = await H.fleteColombia({ lineas: limpias, departamento: depto, ciudad: String(inp.municipio), destinatario: {}, contraentrega: Boolean(inp.contraentrega), servicio: oficina ? "mensajeria_do" : undefined }, env);
-    if (!r.ok) return { ok: false, error: "No se pudo cotizar con ese municipio y departamento. Confirma con el cliente el nombre exacto de ambos; si sigue fallando, cede a Alexander." };
+    if (!r.ok) {
+      reg(`FALLA (${r.causa || "desconocida"}) en ${String(inp.municipio).slice(0, 40)}, ${depto.slice(0, 40)}${r.detalle ? " · " + r.detalle : ""}`);
+      if (r.causa === "departamento") return { ok: false, error: `No reconozco el departamento "${inp.departamento}". Pregúntale al cliente su departamento (por ejemplo Valle del Cauca, Cundinamarca, Antioquia).` };
+      if (r.causa === "municipio") return { ok: false, error: `La transportadora no encontró "${inp.municipio}" en ${depto}. Confirma con el cliente cómo se escribe su municipio. Si vuelve a fallar, dile que Alexander le confirma el envío y marca avisar = true.` };
+      return { ok: false, error: "La transportadora no devolvió una tarifa. NO inventes un valor: dile al cliente que Alexander le confirma el valor del envío y marca avisar = true." };
+    }
+    reg(`ok ${pesos(r.valor)}${base.supuesto ? " (estimado)" : ""}`);
     return { ok: true, valor_envio_cop: r.valor, municipio: r.municipio, transportadora: r.transportadora, servicio: r.servicio, contraentrega: r.contraentrega,
-      ...(oficina ? { recoger_en_oficina_disponible: r.service === "mensajeria_do" } : {}), nota: "No prometas fecha de entrega." };
+      ...(oficina ? { recoger_en_oficina_disponible: r.service === "mensajeria_do" } : {}), ...estimado, nota: "No prometas fecha de entrega." };
   }
 
   if (nombre === "cotizar_envio_internacional") {
     const pais = String(inp.pais || "").toUpperCase().slice(0, 2);
-    if ((T.NEGOCIO.paisesSinEnvio || {})[pais]) return { ok: false, sin_envio: true, error: "No se envía a ese país por restricciones de importación." };
+    if ((T.NEGOCIO.paisesSinEnvio || {})[pais]) { reg(`sin envío a ${pais}`); return { ok: false, sin_envio: true, error: "No se envía a ese país por restricciones de importación." }; }
     if (pais === "CO") return { ok: false, error: "Para Colombia usa cotizar_envio_colombia" };
-    const res = { ok: true, pais, impuestos: "Con DHL, los impuestos de aduana del país de destino los paga quien recibe." };
+    const res = { ok: true, pais, impuestos: "Con DHL, los impuestos de aduana del país de destino los paga quien recibe.", ...estimado };
     if (C.tieneTarifaInternacional(pais)) { res.envio_propio_usd = C.envioInternacionalUSD(limpias); res.envio_propio_nota = "Estimado máximo: si sale menor, se devuelve la diferencia o se abona para más producto."; }
     if (inp.ciudad && H.fleteDHL) {
       const d = await H.fleteDHL(limpias, { pais, region: String(inp.region || ""), ciudad: String(inp.ciudad), postal: String(inp.postal || "") }, env).catch((e) => ({ ok: false, error: String(e.message || e) }));
-      res.dhl = d.ok ? { usd: d.usd, servicio: d.servicio } : { error: d.error };
+      res.dhl = d.ok ? { usd: d.usd, servicio: d.servicio } : { error: d.error, que_hacer: res.envio_propio_usd ? "Ofrece el envío propio." : "NO inventes un valor: dile al cliente que Alexander le confirma el envío y marca avisar = true." };
+      reg(d.ok ? `DHL ok USD ${d.usd} (${pais})` : `DHL FALLA (${pais}, ${String(inp.ciudad).slice(0, 40)}) · ${String(d.error || "").slice(0, 120)}${d.detalle ? " · " + String(d.detalle).slice(0, 160) : ""}`);
     } else res.dhl = { error: "Para cotizar DHL falta la ciudad (y el código postal si el país lo usa)." };
+    if (!inp.ciudad) reg(`sin ciudad (${pais})${res.envio_propio_usd ? `, envío propio USD ${res.envio_propio_usd}` : ""}`);
     return res;
   }
   return { ok: false, error: "Herramienta desconocida" };
@@ -605,7 +658,7 @@ export async function diagnosticoWhatsApp(request, env) {
     modo: modoAgente(env),
     modelo: env.ANTHROPIC_MODEL || MODELO_DEFECTO,
     configurado: { ZERNIO_WEBHOOK_SECRET: Boolean(env.ZERNIO_WEBHOOK_SECRET), ZERNIO_API_KEY: Boolean(env.ZERNIO_API_KEY), ANTHROPIC_API_KEY: Boolean(env.ANTHROPIC_API_KEY),
-      PAGO_NEQUI: Boolean(env.PAGO_NEQUI), memoria_por_chat: Boolean(env.CONVERSACIONES_WA), transcripcion_audios: Boolean(env.AI), telegram: Boolean(env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID) },
+      PAGO_NEQUI: Boolean(env.PAGO_NEQUI), ENVIA_TOKEN: Boolean(env.ENVIA_TOKEN), memoria_por_chat: Boolean(env.CONVERSACIONES_WA), transcripcion_audios: Boolean(env.AI), telegram: Boolean(env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID) },
     numerosDePrueba: lista(env.AGENTE_NUMEROS_PRUEBA).map(enmascarar),
     excluidos: lista(env.AGENTE_EXCLUIDOS).length,
   };
@@ -621,6 +674,10 @@ export async function diagnosticoWhatsApp(request, env) {
       const z = await fetch(`${ZERNIO}/inbox/conversations?limit=1`, { headers: { Authorization: `Bearer ${env.ZERNIO_API_KEY || ""}` }, signal: AbortSignal.timeout(15000) });
       r.pruebaEnVivo.zernio = z.ok ? "funciona" : `falla ${z.status}: ${(await z.text()).slice(0, 200)}`;
     } catch (e) { r.pruebaEnVivo.zernio = "falla: " + String(e.message || e); }
+    if (env.CONVERSACIONES_WA) {
+      try { r.pruebaEnVivo.envio = await (await env.CONVERSACIONES_WA.get(env.CONVERSACIONES_WA.idFromName("__diagnostico__")).fetch("https://agente/diag/probar-envio")).json(); }
+      catch (e) { r.pruebaEnVivo.envio = "falla: " + String(e.message || e); }
+    }
   }
   if (env.CONVERSACIONES_WA) {
     const d = env.CONVERSACIONES_WA.get(env.CONVERSACIONES_WA.idFromName("__diagnostico__"));

@@ -9,7 +9,7 @@ const { ConversacionWA } = worker;
 const { ejecutar, paisPorNumero } = await import("../servidor/agente.js");
 
 /* ---------- simulaciones ---------- */
-let llamadas = [], guion = [], historial = [], nEnv = 0;
+let llamadas = [], guion = [], historial = [], nEnv = 0, enviaFalla = false;
 const J = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } });
 globalThis.fetch = async (url, op = {}) => {
   url = String(url && url.url ? url.url : url);
@@ -20,6 +20,7 @@ globalThis.fetch = async (url, op = {}) => {
   if (url.startsWith("https://api.anthropic.com/")) { const r = guion.shift(); return r ? (r.estado ? J(r.cuerpo, r.estado) : J(r)) : J({ error: "sin guion" }, 500); }
   if (url.startsWith("https://api.telegram.org/")) return J({ ok: true });
   if (url === "https://api.envia.com/locate") return J({ city: "05001000", state: "AN", name: "Medellín" });
+  if (url === "https://api.envia.com/ship/rate/" && enviaFalla) return J({ meta: "error", error: { message: "Token inválido" } }, 401);
   if (url === "https://api.envia.com/ship/rate/") return J({ data: [
     { service: "ground_small", totalPrice: 15200, carrierDescription: "Interrapidísimo", serviceDescription: "Mensajería a domicilio", carrier: "interRapidisimo" },
     { service: "mensajeria_do", totalPrice: 11800, carrierDescription: "Interrapidísimo", serviceDescription: "Domicilio - Oficina", carrier: "interRapidisimo" }] });
@@ -56,7 +57,7 @@ async function webhook(env, ev, firma) {
   return worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp", { method: "POST", body: cuerpo, headers: { "X-Zernio-Signature": f } }), env, ctx);
 }
 const chat = (env) => env.CONVERSACIONES_WA._inst.get(CID);
-const reiniciar = () => { llamadas = []; guion = []; historial = []; nEnv = 0; };
+const reiniciar = () => { llamadas = []; guion = []; historial = []; nEnv = 0; enviaFalla = false; };
 const usoHerramienta = (id, name, input) => ({ content: [{ type: "tool_use", id, name, input }] });
 const responder = (input) => usoHerramienta("tfin", "responder", { ceder: false, avisar: false, resumen: "", ...input });
 const envios = () => llamadas.filter((l) => l.url.includes("zernio.com") && l.metodo === "POST").map((l) => JSON.parse(l.cuerpo));
@@ -340,6 +341,48 @@ await prueba("fotos: no repite las ya enviadas, salvo que el cliente las pida", 
   await webhook(env, evento("message.received", { text: historial.at(-1).message, sender: { phoneNumber: "+" + TEL }, sentAt: historial.at(-1).sentAt }));
   await chat(env).obj.alarm();
   assert.deepEqual(envios().filter((e) => e.attachmentUrl).map((e) => e.attachmentUrl), ["https://ingenieroespuelistico.com/fotos/acrilica/1.jpg"]);
+});
+
+await prueba("envío sin pedido definido: cotiza un pedido mínimo, aunque no haya caché", async () => {
+  const env = nuevoEnv(), cacheReal = globalThis.caches;
+  delete globalThis.caches; // dentro del agente la caché puede no estar disponible
+  try {
+    const sin = await ejecutar("cotizar_envio_colombia", { municipio: "Medellín", departamento: "Antioquia" }, env);
+    assert.equal(sin.ok, true); assert.equal(sin.valor_envio_cop, 16000); assert.match(sin.estimado, /pedido mínimo de 12 pares/);
+    const incompleto = await ejecutar("cotizar_envio_colombia", { lineas: [{ producto: "negra-casquillo", cantidad: 50 }], municipio: "Medellín", departamento: "Antioquia" }, env);
+    assert.equal(incompleto.ok, true, "sin medida igual cotiza: el peso no depende de la medida");
+    const ve = await ejecutar("cotizar_envio_internacional", { pais: "VE" }, env);
+    assert.equal(ve.envio_propio_usd, 25);
+  } finally { globalThis.caches = cacheReal; }
+});
+
+await prueba("envío: si Envia falla, el agente no inventa y el diagnóstico muestra el motivo", async () => {
+  const env = nuevoEnv({ SALUD_CLAVE: "c2" });
+  enviaFalla = true;
+  historial = [{ id: "e1", direction: "incoming", message: "cuanto vale el envio a medellin", sentAt: new Date().toISOString() }];
+  guion = [usoHerramienta("t1", "cotizar_envio_colombia", { municipio: "Medellín", departamento: "Antioquia" }),
+    responder({ mensaje: "Déjeme le confirmo el envío con Alexander.", avisar: true, motivo_aviso: "envío sin tarifa" })];
+  await webhook(env, evento("message.received", { text: historial[0].message, sender: { phoneNumber: "+" + TEL }, sentAt: historial[0].sentAt }));
+  await chat(env).obj.alarm();
+  const res = JSON.parse(alModelo()[1].messages.at(-1).content[0].content);
+  assert.equal(res.ok, false); assert.match(res.error, /NO inventes/);
+  const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c2"), env, ctx)).json();
+  const h = r.ultimasDecisiones.find((e) => e.herramientas).herramientas.join(" | ");
+  assert.match(h, /cotizar_envio_colombia: FALLA \(tarifa\) en Medellín, Antioquia · Envia 401/);
+  const sinToken = await ejecutar("cotizar_envio_colombia", { municipio: "Medellín", departamento: "Antioquia" }, nuevoEnv({ ENVIA_TOKEN: "" }), { registro: [] });
+  assert.equal(sinToken.ok, false);
+  const reg = []; await ejecutar("cotizar_envio_colombia", { municipio: "Medellín", departamento: "Antioquia" }, nuevoEnv({ ENVIA_TOKEN: "" }), { registro: reg });
+  assert.match(reg[0], /FALLA \(configuracion\).*Falta ENVIA_TOKEN/);
+  const depto = await ejecutar("cotizar_envio_colombia", { municipio: "Cali", departamento: "Vallecito" }, env);
+  assert.match(depto.error, /No reconozco el departamento "Vallecito"/);
+});
+
+await prueba("diagnóstico con revisar=1 prueba el envío desde adentro del agente", async () => {
+  const env = nuevoEnv({ SALUD_CLAVE: "c3" });
+  const r = await (await worker.default.fetch(new Request("https://ingenieroespuelistico.com/api/whatsapp/diagnostico?clave=c3&revisar=1"), env, ctx)).json();
+  assert.equal(r.configurado.ENVIA_TOKEN, true);
+  assert.match(r.pruebaEnVivo.envio.colombia, /funciona: \$16\.000 a Medellín/);
+  assert.ok(Array.isArray(r.pruebaEnVivo.envio.detalle));
 });
 
 await prueba("país por número", async () => {
